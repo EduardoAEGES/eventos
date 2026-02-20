@@ -470,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Si data está vacío, es probable un bloqueo por reglas de base de datos (RLS)
             if (data && data.length === 0) {
-                alert('Aviso: El evento no se pudo eliminar de la base de datos. Verifique que ha deshabilitado el "Row Level Security (RLS)" o ha habilitado políticas de "Delete" en Supabase.');
+                alert('Aviso: El evento no se pudo eliminar. Parece que Supabase RLS (Row Level Security) está bloqueando la acción de eliminación (DELETE). Por favor, vaya a Supabase > Authentication > Policies y asigne una política para Permitir DELETE en la tabla "eventos".');
             } else {
                 alert('Evento eliminado correctamente.');
             }
@@ -692,6 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const nextBadge = document.getElementById('next-status-badge');
         const reqList = document.getElementById('req-list');
         const btnAdvance = document.getElementById('btn-advance-status');
+        const btnRetroceder = document.getElementById('btn-retroceder-status');
 
         // Populate Info
         infoDiv.innerHTML = `<h3>${eventData.nombre}</h3><p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>`;
@@ -764,6 +765,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Setup Buttons
         btnAdvance.onclick = () => advanceStatus(eventData, nextStep);
+
+        if (currentStep > 0 && eventData.estado_especial !== 'Cancelado' && eventData.estado_especial !== 'Postergado') {
+            btnRetroceder.style.display = 'inline-flex';
+            btnRetroceder.onclick = () => advanceStatus(eventData, currentStep - 1, true);
+        } else {
+            btnRetroceder.style.display = 'none';
+        }
 
         // --- Cancel and Postpone Logic ---
         const btnShowPostponer = document.getElementById('btn-show-postponer');
@@ -868,28 +876,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function advanceStatus(eventData, nextStep) {
-        if (!confirm(`¿Avanzar evento a: ${getStatusText(nextStep)}?`)) return;
+    async function advanceStatus(eventData, targetStep, isRetroceder = false) {
+        const confirmMsg = isRetroceder
+            ? `¿Retroceder evento a: ${getStatusText(targetStep)}?`
+            : `¿Avanzar evento a: ${getStatusText(targetStep)}?`;
+
+        if (!confirm(confirmMsg)) return;
 
         // Logic for redirects UPON transition
-        const flowConfig = STATUS_FLOW.find(s => s.id === nextStep); // Config of the NEW step
-        if (flowConfig && flowConfig.redirect) {
-            // Redirect happens
-            document.querySelector(`[data-target="${flowConfig.redirect}"]`).click();
-            document.getElementById('status-modal').classList.remove('active');
+        if (!isRetroceder) {
+            const flowConfig = STATUS_FLOW.find(s => s.id === targetStep); // Config of the NEW step
+            if (flowConfig && flowConfig.redirect) {
+                // Redirect happens
+                document.querySelector(`[data-target="${flowConfig.redirect}"]`).click();
+            }
         }
 
         try {
             const { error: updateError } = await supabase
                 .from('eventos')
-                .update({ status: nextStep })
+                .update({ status: targetStep })
                 .eq('id', eventData.id);
 
             if (updateError) {
                 throw updateError;
             }
 
-            alert(`Estado actualizado a: ${getStatusText(nextStep)}`);
+            alert(`Estado actualizado a: ${getStatusText(targetStep)}`);
             document.getElementById('status-modal').classList.remove('active');
             loadEvents(); // Reload Events Sync immediately
 

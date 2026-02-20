@@ -506,14 +506,19 @@
                 </div>
 
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer" style="display: flex; justify-content: space-between; width: 100%;">
                 <button type="button" class="btn-secondary close-modal">Cerrar</button>
-                <button type="button" id="btn-advance-status" class="btn-primary">Avanzar Estado</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" id="btn-retroceder-status" class="btn-secondary"
+                        style="border-color: #f59e0b; color: #f59e0b; display: none;"><i class="ph ph-arrow-left"></i>
+                        Retroceder</button>
+                    <button type="button" id="btn-advance-status" class="btn-primary">Avanzar Estado</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <script src="script.js?v=2026-v6-strict-csv"></script>
+    <script src="script.js?v=2026-v7-retroceder"></script>
 </body>
 
 </html>
