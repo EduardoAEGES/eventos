@@ -202,6 +202,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const supabaseKey = 'sb_publishable_DSS-WHn-WawxfYe0RWUHRg_odMjrb_b';
     const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
+    let allEventsData = [];
+
     // Function to load events
     async function loadEvents() {
         console.log('Iniciando carga de eventos desde Supabase...');
@@ -227,8 +229,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // Renderizar DIRECTO sin filtrar para ver TODO
-            renderEvents(rawEvents);
+            // Guardar datos y aplicar filtros para listas
+            allEventsData = rawEvents;
+            applyFilters();
+
+            // El calendario del dashboard en general sí muestra todo (excepto cancelados), o como prefieras
             renderDashboardCalendar(rawEvents);
             console.log(`Cargados ${count} eventos.`);
 
@@ -241,6 +246,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // Exponer globalmente y cargar al inicio
     window.loadEvents = loadEvents;
     loadEvents();
+
+    function applyFilters() {
+        const searchInput = document.getElementById('search-filter');
+        const statusSelect = document.getElementById('status-filter');
+        const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
+        const statusVal = statusSelect ? statusSelect.value : 'all';
+
+        const filtered = allEventsData.filter(ev => {
+            const matchesSearch = ev.nombre.toLowerCase().includes(searchTerm) ||
+                ev.tipo.toLowerCase().includes(searchTerm) ||
+                ev.modalidad.toLowerCase().includes(searchTerm);
+            if (!matchesSearch) return false;
+
+            if (statusVal !== 'all') {
+                if (statusVal === 'Cancelado' || statusVal === 'Postergado') {
+                    if (ev.estado_especial !== statusVal) return false;
+                } else {
+                    if (ev.estado_especial === 'Cancelado' || ev.estado_especial === 'Postergado') return false;
+                    if (ev.status.toString() !== statusVal) return false;
+                }
+            }
+            return true;
+        });
+
+        renderEvents(filtered);
+    }
+
+    const searchInputEl = document.getElementById('search-filter');
+    const statusSelectEl = document.getElementById('status-filter');
+    if (searchInputEl) searchInputEl.addEventListener('input', applyFilters);
+    if (statusSelectEl) statusSelectEl.addEventListener('change', applyFilters);
 
     // Function to render events
     function renderEvents(events) {
@@ -312,15 +348,66 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!headerRow || !body) return;
 
         // Reset
-        headerRow.innerHTML = '<th style="padding: 1rem; border-right: 1px solid var(--border-color); width: 150px; position: sticky; left: 0; background: var(--card-bg); z-index: 2;">Turnos</th>';
+        headerRow.innerHTML = '<th style="padding: 1rem; border-right: 1px solid var(--border-color); width: 80px; position: sticky; left: 0; background: #0f172a; color: #f8fafc; z-index: 2; border-bottom: 2px solid var(--border-color); text-transform: uppercase;">Turno</th>';
         body.innerHTML = '';
 
-        // Extract dates and assignments
-        const scheduleMap = new Map(); // Date -> { M: [], T: [], N: [] }
+        const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
         const turnos = ['M', 'T', 'N'];
+        const turnoLabels = { 'M': 'MAÑANA', 'T': 'TARDE', 'N': 'NOCHE' };
+
+        // Create header th items for days
+        diasSemana.forEach(dia => {
+            const th = document.createElement('th');
+            th.style.padding = '0.5rem';
+            th.style.borderRight = '1px solid var(--border-color)';
+            th.style.borderBottom = '2px solid var(--border-color)';
+            th.style.minWidth = '140px';
+            th.style.fontWeight = 'bold';
+            th.style.cssText += 'background: var(--bg-color); z-index:1; font-size: 0.9rem; text-align: center;';
+            th.textContent = dia;
+            headerRow.appendChild(th);
+        });
+
+        let hasAnyEvent = false;
+
+        // Structure: weeksMap.get(mondayTime) -> { schedule: array[7][3], dates: array[7], mondayStr }
+        const weeksMap = new Map();
+
+        function getMondayString(dateString) {
+            const [y, m, d] = dateString.split('-');
+            const dateObj = new Date(y, m - 1, d);
+            const day = dateObj.getDay();
+            const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1);
+            const monday = new Date(dateObj.setDate(diff));
+            return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+        }
+
+        function ensureWeekExists(mondayStr) {
+            if (!weeksMap.has(mondayStr)) {
+                const arr = [];
+                for (let i = 0; i < 7; i++) {
+                    arr[i] = { M: [], T: [], N: [] };
+                }
+
+                const [y, m, d] = mondayStr.split('-');
+                const monDate = new Date(y, m - 1, d);
+                const datesArr = [];
+                for (let i = 0; i < 7; i++) {
+                    const current = new Date(monDate);
+                    current.setDate(monDate.getDate() + i);
+                    datesArr.push(`${current.getDate()}/${current.getMonth() + 1}/${current.getFullYear().toString().slice(-2)}`);
+                }
+
+                weeksMap.set(mondayStr, {
+                    dates: datesArr,
+                    schedule: arr,
+                    mondayStr: mondayStr
+                });
+            }
+        }
 
         events.forEach(ev => {
-            if (ev.estado_especial === 'Cancelado') return; // Skip cancelled events in schedule
+            if (ev.estado_especial === 'Cancelado') return;
 
             let horarios = [];
             try { horarios = JSON.parse(ev.horario); } catch (e) { }
@@ -329,127 +416,320 @@ document.addEventListener('DOMContentLoaded', () => {
             horarios.forEach(h => {
                 if (!h.fecha || !h.inicio) return;
 
-                const dateKey = h.fecha;
-                if (!scheduleMap.has(dateKey)) {
-                    scheduleMap.set(dateKey, { M: [], T: [], N: [] });
-                }
+                const mondayStr = getMondayString(h.fecha);
+                ensureWeekExists(mondayStr);
 
-                // Determinar turno (M: 00-12, T: 13-17, N: 18-23)
-                const horaInicioStr = h.inicio.split(':')[0];
-                const horaNumerica = parseInt(horaInicioStr, 10);
+                const [y, m, d] = h.fecha.split('-');
+                const dObj = new Date(y, m - 1, d);
+                let jsDay = dObj.getDay();
+                let colIndex = jsDay === 0 ? 6 : jsDay - 1;
 
+                const horaNumerica = parseInt(h.inicio.split(':')[0], 10);
                 let turnoActual = 'M';
                 if (horaNumerica >= 13 && horaNumerica < 18) turnoActual = 'T';
                 if (horaNumerica >= 18) turnoActual = 'N';
 
-                scheduleMap.get(dateKey)[turnoActual].push({
+                weeksMap.get(mondayStr).schedule[colIndex][turnoActual].push({
                     nombre: ev.nombre,
                     tipo: ev.tipo,
+                    fechaStr: h.fecha,
                     inicio: h.inicio,
                     fin: h.fin,
                     status: ev.status,
-                    modalidad: ev.modalidad
+                    modalidad: ev.modalidad,
+                    raw: ev // keep raw data for onClick
                 });
+
+                hasAnyEvent = true;
             });
         });
 
-        // Get sorted unique dates
-        const uniqueDates = Array.from(scheduleMap.keys()).sort();
-
-        if (uniqueDates.length === 0) {
-            body.innerHTML = '<tr><td colspan="1" style="padding: 2rem; color: var(--text-muted);">No hay horarios registrados.</td></tr>';
+        if (!hasAnyEvent) {
+            body.innerHTML = '<tr><td colspan="8" style="padding: 2rem; color: var(--text-muted);">No hay horarios registrados.</td></tr>';
             return;
         }
 
-        // Format Date (Spanish)
-        const formatOptions = { weekday: 'long', day: 'numeric', month: 'numeric', year: '2-digit' };
+        const sortedMondays = Array.from(weeksMap.keys()).sort();
 
-        uniqueDates.forEach(dateStr => {
-            // dateStr format usually YYYY-MM-DD
-            const [y, m, d] = dateStr.split('-');
-            const dObj = new Date(y, m - 1, d); // local time without timezone shifts
-            let headerText = dObj.toLocaleDateString('es-ES', formatOptions);
-            // Capitalize first letter (ex: lunes -> Lunes)
-            headerText = headerText.charAt(0).toUpperCase() + headerText.slice(1);
+        sortedMondays.forEach((mondayStr, index) => {
+            const weekData = weeksMap.get(mondayStr);
+            const weekNum = index + 1;
 
-            const th = document.createElement('th');
-            th.style.padding = '1rem';
-            th.style.borderRight = '1px solid var(--border-color)';
-            th.style.minWidth = '200px';
-            th.style.fontWeight = '500';
-            th.textContent = headerText;
-            headerRow.appendChild(th);
-        });
+            // --- FECHA ROW --- 
+            const trFecha = document.createElement('tr');
+            trFecha.style.background = '#1e293b'; // professional dark slate
 
-        // Build Rows for M, T, N
-        const turnoLabels = { 'M': 'Mañana', 'T': 'Tarde', 'N': 'Noche' };
-        const turnoColors = { 'M': 'var(--primary-color)', 'T': 'var(--secondary-color)', 'N': 'var(--accent-color)' };
+            const tdTitFecha = document.createElement('td');
+            tdTitFecha.style.padding = '0.5rem';
+            tdTitFecha.style.fontWeight = 'bold';
+            tdTitFecha.style.borderRight = '1px solid var(--border-color)';
+            tdTitFecha.style.borderBottom = '1px solid var(--border-color)';
+            tdTitFecha.style.borderTop = '2px solid rgba(148, 163, 184, 0.5)'; // Demarcate week top
+            tdTitFecha.style.position = 'sticky';
+            tdTitFecha.style.left = '0';
+            tdTitFecha.style.background = '#0f172a'; // darker slate
+            tdTitFecha.style.zIndex = '1';
+            tdTitFecha.style.textAlign = 'center';
+            tdTitFecha.style.fontSize = '0.75rem';
+            tdTitFecha.style.color = '#cbd5e1';
+            tdTitFecha.innerHTML = `<span style="color:#94a3b8; font-weight: normal; font-size: 0.8rem; letter-spacing: 1px;">FECHAS</span>`;
+            trFecha.appendChild(tdTitFecha);
 
-        turnos.forEach(t => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid var(--border-color)';
+            for (let i = 0; i < 7; i++) {
+                const tdD = document.createElement('td');
+                tdD.style.padding = '0.5rem';
+                tdD.style.borderRight = '1px solid var(--border-color)';
+                tdD.style.borderBottom = '1px solid var(--border-color)';
+                tdD.style.borderTop = '2px solid rgba(124, 58, 237, 0.5)';
+                tdD.style.textAlign = 'center';
 
-            // Turno Column (Sticky left)
-            const tdTurno = document.createElement('td');
-            tdTurno.style.padding = '1rem';
-            tdTurno.style.fontWeight = 'bold';
-            tdTurno.style.borderRight = '1px solid var(--border-color)';
-            tdTurno.style.position = 'sticky';
-            tdTurno.style.left = '0';
-            tdTurno.style.background = 'var(--bg-color)';
-            tdTurno.style.zIndex = '1';
-            tdTurno.textContent = turnoLabels[t];
-            tr.appendChild(tdTurno);
-
-            uniqueDates.forEach(dateStr => {
-                const tdEvents = document.createElement('td');
-                tdEvents.style.padding = '0.5rem';
-                tdEvents.style.borderRight = '1px solid var(--border-color)';
-                tdEvents.style.verticalAlign = 'top';
-
-                const acts = scheduleMap.get(dateStr)[t];
-
-                if (acts.length > 0) {
-                    acts.forEach(act => {
-                        // Generate color block similar to excel
-                        const block = document.createElement('div');
-                        let bgColor = 'rgba(255,255,255,0.05)';
-                        let borderColor = 'transparent';
-
-                        // Simplistic color mapping based on status or type
-                        if (act.status === 7) {
-                            bgColor = 'rgba(16, 185, 129, 0.2)'; // Green
-                            borderColor = 'rgba(16, 185, 129, 0.4)';
-                        } else if (act.status > 0) {
-                            bgColor = 'rgba(56, 189, 248, 0.2)'; // Light blue
-                            borderColor = 'rgba(56, 189, 248, 0.4)';
-                        } else {
-                            bgColor = 'rgba(255, 255, 255, 0.05)';
-                            borderColor = 'rgba(255,255,255,0.1)';
-                        }
-
-                        block.style.background = bgColor;
-                        block.style.border = `1px solid ${borderColor}`;
-                        block.style.borderRadius = '6px';
-                        block.style.padding = '0.5rem';
-                        block.style.marginBottom = '0.5rem';
-                        block.style.textAlign = 'left';
-                        block.style.fontSize = '0.85rem';
-
-                        block.innerHTML = `
-                            <strong>${act.tipo}: ${act.nombre}</strong><br>
-                            <span style="color:var(--text-muted); font-size: 0.75rem;">${act.modalidad} | ${act.inicio} - ${act.fin}</span>
-                        `;
-                        tdEvents.appendChild(block);
-                    });
+                // Color tweaks matching image (weekends vs weekdays)
+                if (i === 5 || i === 6) {
+                    tdD.style.color = '#c4b5fd';
                 } else {
-                    tdEvents.innerHTML = '<span style="color:rgba(255,255,255,0.1); font-size:12px;">-</span>';
+                    tdD.style.color = '#fbbf24';
                 }
 
-                tr.appendChild(tdEvents);
-            });
+                tdD.style.fontWeight = 'bold';
+                tdD.style.fontSize = '0.9rem';
+                tdD.style.background = 'rgba(124, 58, 237, 0.2)'; // purple background per day matching Excel
+                tdD.textContent = weekData.dates[i];
+                trFecha.appendChild(tdD);
+            }
+            body.appendChild(trFecha);
 
-            body.appendChild(tr);
+            // --- M, T, N ROWS ---
+            turnos.forEach((t, tIndex) => {
+                const tr = document.createElement('tr');
+                if (t === 'N') tr.style.borderBottom = '3px solid rgba(148, 163, 184, 0.5)'; // Demarcate end of week
+                else tr.style.borderBottom = '1px solid var(--border-color)';
+
+                // Turno Column
+                const tdTurno = document.createElement('td');
+                tdTurno.style.padding = '0.5rem';
+                tdTurno.style.fontWeight = '600';
+                tdTurno.style.borderRight = '1px solid var(--border-color)';
+                tdTurno.style.position = 'sticky';
+                tdTurno.style.left = '0';
+                tdTurno.style.background = '#0f172a'; // darker slate
+                tdTurno.style.zIndex = '1';
+                tdTurno.style.textAlign = 'center';
+                tdTurno.style.fontSize = '0.8rem';
+                tdTurno.style.color = '#f8fafc';
+                tdTurno.innerHTML = turnoLabels[t];
+                tr.appendChild(tdTurno);
+
+                for (let i = 0; i < 7; i++) {
+                    const tdEvents = document.createElement('td');
+                    tdEvents.style.padding = '0.2rem';
+                    tdEvents.style.borderRight = '1px solid var(--border-color)';
+                    tdEvents.style.verticalAlign = 'top';
+                    tdEvents.style.minWidth = '140px';
+
+                    const acts = weekData.schedule[i][t];
+
+                    acts.sort((a, b) => a.inicio.localeCompare(b.inicio));
+
+                    if (acts.length > 0) {
+                        acts.forEach(act => {
+                            const block = document.createElement('div');
+
+                            // Advanced color mapping approximating the Excel colors
+                            let bg = 'rgba(56, 189, 248, 0.2)';
+                            let bd = 'rgba(56, 189, 248, 0.4)';
+                            let tc = '#ffffff';
+
+                            const lowerNombre = (act.nombre + " " + act.tipo).toLowerCase();
+
+                            if (lowerNombre.includes('audi') || lowerNombre.includes('pln') || lowerNombre.includes('reforzamiento')) {
+                                bg = '#06b6d4'; // Cyan matching "Reforzamiento PLN" and "AUDI V"
+                                bd = '#0891b2';
+                                tc = '#000000';
+                            } else if (lowerNombre.includes('taller')) {
+                                if (lowerNombre.includes('carmen')) {
+                                    bg = '#a3e635'; // Lime Green matching "Taller Costos Carmen Laurie"
+                                    bd = '#65a30d';
+                                    tc = '#000000';
+                                } else if (lowerNombre.includes('finan')) {
+                                    bg = '#86efac'; // Light green matching "Taller Financiero"
+                                    bd = '#22c55e';
+                                    tc = '#000000';
+                                } else if (lowerNombre.includes('docen') || lowerNombre.includes('docent')) {
+                                    bg = '#fb923c'; // Orange matching "Taller Concar Docent"
+                                    bd = '#ea580c';
+                                    tc = '#000000';
+                                } else {
+                                    bg = '#818cf8'; // Indigo for generic Taller instead of yellow
+                                    bd = '#4f46e5';
+                                    tc = '#ffffff';
+                                }
+                            } else if (lowerNombre.includes('testeo')) {
+                                bg = '#fde047'; // Yellow matching "Testeo Talleres"
+                                bd = '#ca8a04';
+                                tc = '#000000';
+                            } else if (lowerNombre.includes('kick off')) {
+                                bg = '#fca5a5'; // subtle red/orange for Kick off
+                                bd = '#dc2626';
+                                tc = '#000000';
+                            } else {
+                                // Default depending on status if no textual match
+                                if (act.status === 7) {
+                                    bg = 'rgba(16, 185, 129, 0.3)';
+                                    bd = 'rgba(16, 185, 129, 0.5)';
+                                } else if (act.status > 0) {
+                                    bg = 'rgba(56, 189, 248, 0.2)';
+                                    bd = 'rgba(56, 189, 248, 0.4)';
+                                } else {
+                                    bg = 'rgba(255, 255, 255, 0.05)';
+                                    bd = 'rgba(255,255,255,0.1)';
+                                }
+                            }
+
+                            block.style.background = bg;
+                            block.style.border = `1px solid ${bd}`;
+                            block.style.color = tc;
+                            block.style.padding = '0.5rem';
+                            block.style.marginBottom = '2px';
+                            block.style.textAlign = 'center';
+                            block.style.fontSize = '0.8rem';
+                            block.style.lineHeight = '1.2';
+                            block.style.borderRadius = '2px';
+                            block.style.cursor = 'pointer';
+                            block.style.transition = 'transform 0.1s ease';
+
+                            block.onmouseenter = () => block.style.transform = 'scale(1.02)';
+                            block.onmouseleave = () => block.style.transform = 'scale(1)';
+
+                            block.onclick = () => window.showDashboardEventDetails(act.raw);
+
+                            const actPonente = act.raw.ponente && act.raw.ponente.toLowerCase() !== 'pendiente' ? `<br><span style="font-size: 0.75rem; opacity: 0.85;"><i class="ph ph-user"></i> ${act.raw.ponente}</span>` : '';
+                            block.innerHTML = `
+                                <strong>${act.nombre}</strong>${actPonente}<br>
+                                <span style="font-size: 0.75rem; opacity: 0.8; font-weight: normal;">${act.inicio} - ${act.fin}</span>
+                            `;
+                            tdEvents.appendChild(block);
+                        });
+                    } else {
+                        tdEvents.innerHTML = '';
+                        tdEvents.style.background = 'rgba(255,255,255,0.02)'; // extremely subtle alternating bg for empty cells
+                    }
+
+                    tr.appendChild(tdEvents);
+                }
+
+                body.appendChild(tr);
+            });
+        });
+    }
+
+    // Modal popup for seeing dashboard event details
+    window.showDashboardEventDetails = function (eventData) {
+        if (!eventData) return;
+
+        const isCancelled = eventData.estado_especial === 'Cancelado';
+        const isPostponed = eventData.estado_especial === 'Postergado';
+
+        let statusBadgeLabel = `${eventData.status}/7 ${getStatusText(eventData.status)}`;
+        let statusColor = '#3b82f6'; // default blue
+        if (isCancelled) {
+            statusBadgeLabel = 'CANCELADO';
+            statusColor = '#ef4444'; // red
+        } else if (isPostponed) {
+            statusBadgeLabel = `POSTERGADO (${eventData.status}/7)`;
+            statusColor = '#f59e0b'; // amber
+        } else if (eventData.status === 7) {
+            statusColor = '#10b981'; // green
+        }
+
+        let typeIcon = '';
+        const lowerModalidad = (eventData.modalidad || '').toLowerCase();
+
+        if (lowerModalidad.includes('presencial')) {
+            typeIcon = '<img src="presencial.png" alt="Presencial" style="width: 28px; height: 28px; vertical-align: middle; margin-right: 0.5rem;">';
+        } else if (lowerModalidad.includes('híbrido') || lowerModalidad.includes('hibrido')) {
+            typeIcon = '<img src="hibrido.png" alt="Híbrido" style="width: 28px; height: 28px; vertical-align: middle; margin-right: 0.5rem;">';
+        } else if (lowerModalidad.includes('virtual')) {
+            typeIcon = '<img src="virtual.png" alt="Virtual" style="width: 28px; height: 28px; vertical-align: middle; margin-right: 0.5rem;">';
+        } else {
+            typeIcon = '<i class="ph-duotone ph-calendar-blank" style="color: #64748b; font-size: 1.5rem; vertical-align: middle; margin-right: 0.5rem;"></i>';
+        }
+
+        let horariosHtml = '';
+        try {
+            const horarios = JSON.parse(eventData.horario || '[]');
+            if (Array.isArray(horarios) && horarios.length > 0) {
+                horarios.forEach(h => {
+                    if (!h.fecha || !h.inicio) return;
+                    const [y, m, d] = h.fecha.split('-');
+                    const dateObj = new Date(y, m - 1, d);
+                    const shortDate = dateObj.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' });
+                    horariosHtml += `<div style="margin-left: 0.5rem; padding: 2px 0; color: #475569;">• <span style="text-transform: capitalize;">${shortDate}</span> | ${h.inicio} - ${h.fin}</div>`;
+                });
+            } else {
+                horariosHtml = '<div style="margin-left: 0.5rem; color: #64748b;">No especificado</div>';
+            }
+        } catch (e) {
+            horariosHtml = '<div style="margin-left: 0.5rem; color: #64748b;">No especificado</div>';
+        }
+
+        let sedeStr = eventData.sede || eventData.lugar || 'Vía Zoom / Teams (o Virtual)';
+
+        let htmlContent = `
+            <div style="text-align: left; padding: 0.5rem; font-size: 0.95rem; color: #64748b; line-height: 1.6;">
+                <p style="margin-bottom: 0.7rem; padding-bottom: 0.7rem; border-bottom: 1px solid rgba(0,0,0,0.1);">
+                    <strong>Sede / Ubicación:</strong> <span style="color: #1e293b;">${sedeStr}</span>
+                </p>
+                <div style="margin-bottom: 0.7rem;">
+                    <strong style="color: #1e293b;">Horario(s) y Días programados:</strong>
+                    <div style="margin-top: 0.3rem; font-size: 0.9rem;">
+                        ${horariosHtml}
+                    </div>
+                </div>
+                <p style="margin-bottom: 0.7rem;"><strong>Tipo:</strong> <span style="color: #1e293b;">${eventData.tipo}</span></p>
+                <p style="margin-bottom: 0.7rem;"><strong>Modalidad / Público:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
+                <p><strong>Estado Actual:</strong> <span style="display:inline-block; margin-left: 0.5rem; padding: 0.2rem 0.6rem; background: ${statusColor}22; color: ${statusColor}; border-radius: 4px; font-weight: bold;">${statusBadgeLabel}</span></p>
+        `;
+
+        if (eventData.sustento) {
+            htmlContent += `<div style="margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.04); border-left: 3px solid ${statusColor}; border-radius: 4px;">
+                                <strong style="font-size: 0.85rem; color: #475569;">Motivo Justificación:</strong><br>
+                                <span style="font-size: 0.9rem; color: #1e293b;">${eventData.sustento}</span>
+                            </div>`;
+        }
+
+        htmlContent += `</div>`;
+
+        Swal.fire({
+            title: `${typeIcon} <span style="vertical-align: middle;">${eventData.nombre}</span>`,
+            html: htmlContent,
+            showCancelButton: true,
+            confirmButtonText: '<i class="ph ph-arrows-clockwise"></i> Gestionar Estado',
+            cancelButtonText: 'Cerrar',
+            confirmButtonColor: '#3b82f6', // solid blue to avoid css var issues making it invisible
+            cancelButtonColor: '#475569',
+            width: '36em',
+            customClass: {
+                title: 'text-left',
+                htmlContainer: 'text-left'
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Navigate to the events tab
+                const eventsTabLink = document.querySelector('.nav-btn[data-target="eventos"]');
+                if (eventsTabLink) {
+                    eventsTabLink.click();
+                }
+
+                // Then open the status modal. Delay a bit to ensure UI transitions don't clash
+                setTimeout(() => {
+                    const encodedData = encodeURIComponent(JSON.stringify(eventData));
+                    if (typeof openStatusModal === 'function') {
+                        openStatusModal(encodedData);
+                    } else if (window.openStatusModal) {
+                        window.openStatusModal(encodedData);
+                    }
+                }, 300);
+            }
         });
     }
 
@@ -457,7 +737,18 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentEditEventId = null;
 
     window.deleteEvent = async function (eventId) {
-        if (!confirm('¿ESTÁ COMPLETAMENTE SEGURO de eliminar este evento? Esta acción no se puede deshacer.')) return;
+        const result = await Swal.fire({
+            title: '¿Está seguro?',
+            text: '¿ESTÁ COMPLETAMENTE SEGURO de eliminar este evento? Esta acción no se puede deshacer.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#f87171',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!result.isConfirmed) return;
 
         try {
             const { data, error } = await supabase
@@ -470,14 +761,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Si data está vacío, es probable un bloqueo por reglas de base de datos (RLS)
             if (data && data.length === 0) {
-                alert('Aviso: El evento no se pudo eliminar. Parece que Supabase RLS (Row Level Security) está bloqueando la acción de eliminación (DELETE). Por favor, vaya a Supabase > Authentication > Policies y asigne una política para Permitir DELETE en la tabla "eventos".');
+                Swal.fire('Atención', 'El evento no se pudo eliminar. Parece que Supabase RLS (Row Level Security) está bloqueando la acción de eliminación (DELETE).', 'warning');
             } else {
-                alert('Evento eliminado correctamente.');
+                Swal.fire('Eliminado', 'Evento eliminado correctamente.', 'success');
             }
             loadEvents();
         } catch (error) {
             console.error('Error deleting event:', error);
-            alert('Error al eliminar el evento: ' + error.message);
+            Swal.fire('Error', 'Error al eliminar el evento: ' + error.message, 'error');
         }
     };
 
@@ -492,6 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate fields
         document.getElementById('event-type').value = eventData.tipo;
         document.getElementById('event-name').value = eventData.nombre;
+        document.getElementById('event-ponente').value = eventData.ponente && eventData.ponente !== 'Pendiente' ? eventData.ponente : '';
 
         // Modality
         document.querySelector(`input[name="modality"][value="${eventData.modalidad}"]`).checked = true;
@@ -615,6 +907,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = {
             tipo: document.getElementById('event-type').value,
             nombre: document.getElementById('event-name').value,
+            ponente: document.getElementById('event-ponente').value.trim() || 'Pendiente',
             modalidad: document.querySelector('input[name="modality"]:checked').value,
             sedes: sedes,
             horario: JSON.stringify(schedule),
@@ -636,7 +929,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     .eq('id', currentEditEventId);
 
                 if (updateError) throw updateError;
-                alert('Evento actualizado exitosamente.');
+                Swal.fire('¡Éxito!', 'Evento actualizado exitosamente.', 'success');
                 currentEditEventId = null;
             } else {
                 // CREATE NEW EVENT
@@ -645,7 +938,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     .insert([data]);
 
                 if (insertError) throw insertError;
-                alert('Evento guardado exitosamente.');
+                Swal.fire('¡Éxito!', 'Evento guardado exitosamente.', 'success');
             }
 
             modal.classList.remove('active');
@@ -659,7 +952,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (error) {
             console.error('Error:', error);
-            alert('Hubo un error al guardar el evento: ' + error.message);
+            Swal.fire('Error', 'Hubo un error al guardar el evento: ' + error.message, 'error');
         } finally {
             submitBtn.textContent = originalText;
             submitBtn.disabled = false;
@@ -695,7 +988,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const btnRetroceder = document.getElementById('btn-retroceder-status');
 
         // Populate Info
-        infoDiv.innerHTML = `<h3>${eventData.nombre}</h3><p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>`;
+        let ponenteHtml = '';
+        if (!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') {
+            ponenteHtml = `
+                <div style="margin-top: 1rem; padding: 0.5rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
+                    <label style="color:var(--text-muted); font-size:0.85rem; font-weight: bold;">Asignar Ponente (Requerido para avanzar):</label>
+                    <input type="text" id="status-ponente-input" class="input-modern small" placeholder="Nombre completo del ponente" style="width:100%; margin-top:0.3rem;" required>
+                </div>
+            `;
+        } else {
+            ponenteHtml = `<p style="color:var(--text-muted); margin-top: 0.5rem;"><i class="ph ph-user"></i> Ponente: <strong style="color: #f8fafc;">${eventData.ponente}</strong></p>`;
+        }
+        infoDiv.innerHTML = `<h3>${eventData.nombre}</h3><p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>${ponenteHtml}`;
 
         // Status Badges
         const currentStep = parseInt(eventData.status) || 0;
@@ -764,7 +1068,18 @@ document.addEventListener('DOMContentLoaded', () => {
         modal.classList.add('active');
 
         // Setup Buttons
-        btnAdvance.onclick = () => advanceStatus(eventData, nextStep);
+        btnAdvance.onclick = () => {
+            const ponenteInput = document.getElementById('status-ponente-input');
+            let newPonente = null;
+            if (ponenteInput) {
+                newPonente = ponenteInput.value.trim();
+                if (!newPonente || newPonente.toLowerCase() === 'pendiente') {
+                    Swal.fire('Atención', 'Debe asignar un ponente válido para poder avanzar de estado.', 'warning');
+                    return;
+                }
+            }
+            advanceStatus(eventData, nextStep, false, newPonente);
+        };
 
         if (currentStep > 0 && eventData.estado_especial !== 'Cancelado' && eventData.estado_especial !== 'Postergado') {
             btnRetroceder.style.display = 'inline-flex';
@@ -828,14 +1143,24 @@ document.addEventListener('DOMContentLoaded', () => {
             pendingSpecialAction = null;
         };
 
-        btnConfirmSpecial.onclick = () => {
+        btnConfirmSpecial.onclick = async () => {
             const motivo = sustentoText.value.trim();
             if (!motivo) {
-                alert("Por favor ingrese el sustento (requerido).");
+                Swal.fire('Atención', 'Por favor ingrese el sustento (requerido).', 'warning');
                 return;
             }
             if (pendingSpecialAction === 'Cancelado') {
-                if (!confirm("¿ESTÁ COMPLETAMENTE SEGURO de cancelar este evento de forma definitiva? No hay vuelta atrás.")) return;
+                const result = await Swal.fire({
+                    title: '¿Cancelar evento?',
+                    text: '¿ESTÁ COMPLETAMENTE SEGURO de cancelar este evento de forma definitiva? No hay vuelta atrás.',
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#f87171',
+                    cancelButtonColor: '#6b7280',
+                    confirmButtonText: 'Sí, cancelar evento',
+                    cancelButtonText: 'Volver'
+                });
+                if (!result.isConfirmed) return;
             }
             executeSpecialAction(eventData.id, pendingSpecialAction, motivo);
         };
@@ -849,17 +1174,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 .eq('id', eventId);
 
             if (updateError) throw updateError;
-            alert('Evento marcado como ' + actionName + ' exitosamente.');
+            Swal.fire('¡Éxito!', 'Evento marcado como ' + actionName + ' exitosamente.', 'success');
             document.getElementById('status-modal').classList.remove('active');
             loadEvents();
         } catch (e) {
             console.error(e);
-            alert("Error al actualizar: " + e.message);
+            Swal.fire('Error', "Error al actualizar: " + e.message, 'error');
         }
     }
 
     async function resumeEvent(eventData) {
-        if (!confirm("¿Desea reanudar este evento postergado?")) return;
+        const result = await Swal.fire({
+            title: '¿Reanudar evento?',
+            text: '¿Desea reanudar este evento postergado?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: 'var(--primary-color)',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: 'Sí, reanudar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (!result.isConfirmed) return;
+
         try {
             const { error: updateError } = await supabase
                 .from('eventos')
@@ -867,21 +1204,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 .eq('id', eventData.id);
 
             if (updateError) throw updateError;
-            alert('Evento reanudado exitosamente.');
+            Swal.fire('¡Éxito!', 'Evento reanudado exitosamente.', 'success');
             document.getElementById('status-modal').classList.remove('active');
             loadEvents();
         } catch (e) {
             console.error(e);
-            alert("Error al reanudar: " + e.message);
+            Swal.fire('Error', "Error al reanudar: " + e.message, 'error');
         }
     }
 
-    async function advanceStatus(eventData, targetStep, isRetroceder = false) {
-        const confirmMsg = isRetroceder
-            ? `¿Retroceder evento a: ${getStatusText(targetStep)}?`
-            : `¿Avanzar evento a: ${getStatusText(targetStep)}?`;
-
-        if (!confirm(confirmMsg)) return;
+    async function advanceStatus(eventData, targetStep, isRetroceder = false, newPonente = null) {
+        // Se omiten los popups nativos de confirmación por pedido del usuario para un flujo más ágil
+        // Proceder directamente o mostrar notificaciones minificadas.
 
         // Logic for redirects UPON transition
         if (!isRetroceder) {
@@ -893,21 +1227,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
+            const updatePayload = { status: targetStep };
+            if (newPonente) {
+                updatePayload.ponente = newPonente;
+                eventData.ponente = newPonente;
+            }
+
             const { error: updateError } = await supabase
                 .from('eventos')
-                .update({ status: targetStep })
+                .update(updatePayload)
                 .eq('id', eventData.id);
 
             if (updateError) {
                 throw updateError;
             }
 
-            alert(`Estado actualizado a: ${getStatusText(targetStep)}`);
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                icon: 'success',
+                title: `Estado actualizado a: ${getStatusText(targetStep)}`
+            });
+
             document.getElementById('status-modal').classList.remove('active');
             loadEvents(); // Reload Events Sync immediately
 
         } catch (e) {
-            alert('Error al actualizar (Ver consola)');
+            Swal.fire('Error', 'Error al actualizar (Ver consola)', 'error');
             console.error(e);
         }
     }

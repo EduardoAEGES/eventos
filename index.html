@@ -19,6 +19,9 @@
     <!-- Supabase SDK -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+    <!-- SweetAlert2 para popups responsivos -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -119,11 +122,19 @@
                 <div class="events-container">
                     <!-- Filtros / Buscador -->
                     <div class="events-filters">
-                        <input type="text" placeholder="Buscar evento..." class="input-modern small">
-                        <select class="input-modern small">
+                        <input type="text" id="search-filter" placeholder="Buscar evento..." class="input-modern small">
+                        <select id="status-filter" class="input-modern small">
                             <option value="all">Todos los estados</option>
-                            <option value="active">Activos</option>
-                            <option value="finished">Concluidos</option>
+                            <option value="0">0/7 En proyecto</option>
+                            <option value="1">1/7 Planificado</option>
+                            <option value="2">2/7 Formalizado</option>
+                            <option value="3">3/7 Comunicado</option>
+                            <option value="4">4/7 Difundido</option>
+                            <option value="5">5/7 Preparado</option>
+                            <option value="6">6/7 Realizado</option>
+                            <option value="7">7/7 Concluido</option>
+                            <option value="Cancelado">Cancelado</option>
+                            <option value="Postergado">Postergado</option>
                         </select>
                         <button class="btn-secondary small" onclick="loadEvents()" title="Recargar"><i
                                 class="ph ph-arrow-clockwise"></i></button>
@@ -363,6 +374,13 @@
                         <label for="event-name">Nombre del Evento</label>
                         <input type="text" id="event-name" class="input-modern"
                             placeholder="Ej: Taller de Robótica Avanzada" required>
+                    </div>
+
+                    <!-- 2.5 Ponente -->
+                    <div class="form-group">
+                        <label for="event-ponente">Ponente / Expositor</label>
+                        <input type="text" id="event-ponente" class="input-modern"
+                            placeholder="Dejar en blanco para guardar como 'Pendiente'">
                     </div>
 
                     <!-- 3. Modalidad -->
