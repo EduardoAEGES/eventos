@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eventos CONTA - PLN 2026</title>
+
+    <!-- Fuentes Google Fonts: Inter y Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@500;600;700&display=swap"
+        rel="stylesheet">
+
+    <!-- Iconos (Phosphor Icons - CDN ligero y moderno) -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar de Navegación -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-certificate"></i>
+                <span>Eventos CONTA - PLN 2026</span>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-target="dashboard">
+                    <i class="ph ph-squares-four"></i>
+                    <span>Inicio</span>
+                </button>
+                <button class="nav-btn" data-target="eventos">
+                    <i class="ph ph-calendar"></i>
+                    <span>Eventos</span>
+                </button>
+                <button class="nav-btn" data-target="comunicacion">
+                    <i class="ph ph-chat-circle-text"></i>
+                    <span>Comunicación</span>
+                </button>
+                <button class="nav-btn" data-target="generacion">
+                    <i class="ph ph-file-pdf"></i>
+                    <span>Generación</span>
+                </button>
+                <!--
+                <button class="nav-btn" data-target="envio">
+                    <i class="ph ph-paper-plane-tilt"></i>
+                    <span>Envío Masivo</span>
+                </button> 
+                -->
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="user-profile">
+                    <div class="user-avatar">AD</div>
+                    <div class="user-info">
+                        <span class="name">Admin</span>
+                        <span class="role">Administrador</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Área Principal -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1 id="page-title">Panel de Control</h1>
+                <div class="actions">
+                    <button class="icon-btn"><i class="ph ph-bell"></i></button>
+                    <button class="icon-btn"><i class="ph ph-gear"></i></button>
+                </div>
+            </header>
+
+            <!-- Sección: Dashboard -->
+            <section id="dashboard" class="content-section active">
+                <div class="calendar-header"
+                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>Cronograma General</h2>
+                    <div class="calendar-filters">
+                        <!-- Botones de navegación del calendario y selectores si se requieren a futuro -->
+                    </div>
+                </div>
+
+                <div class="calendar-wrapper card"
+                    style="overflow-x: auto; border-radius: 12px; border: 1px solid var(--border-color); padding: 0;">
+                    <table id="schedule-table" class="schedule-table"
+                        style="width: 100%; border-collapse: collapse; text-align: center; min-width: 800px;">
+                        <thead>
+                            <tr id="schedule-header-row"
+                                style="background: var(--card-bg); border-bottom: 2px solid var(--border-color);">
+                                <th
+                                    style="padding: 1rem; border-right: 1px solid var(--border-color); width: 150px; position: sticky; left: 0; background: var(--card-bg); z-index: 2;">
+                                    Turno</th>
+                                <!-- Dias llenados por JS -->
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-body">
+                            <!-- Filas llenadas por JS (Mañana, Tarde, Noche) -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Sección: Eventos -->
+            <section id="eventos" class="content-section">
+                <div class="section-header">
+                    <h2>Gestión de Eventos</h2>
+                    <p>Administra y monitorea el estado de tus eventos académicos.</p>
+                    <button id="btn-create-event-new" class="btn-primary" style="margin-top: 1rem;"><i
+                            class="ph ph-plus-circle"></i> Crear Nuevo Evento</button>
+                </div>
+
+                <div class="events-container">
+                    <!-- Filtros / Buscador -->
+                    <div class="events-filters">
+                        <input type="text" placeholder="Buscar evento..." class="input-modern small">
+                        <select class="input-modern small">
+                            <option value="all">Todos los estados</option>
+                            <option value="active">Activos</option>
+                            <option value="finished">Concluidos</option>
+                        </select>
+                        <button class="btn-secondary small" onclick="loadEvents()" title="Recargar"><i
+                                class="ph ph-arrow-clockwise"></i></button>
+                    </div>
+
+                    <!-- Lista de Eventos (Grid) -->
+                    <div class="events-grid" id="events-grid">
+                        <p style="text-align:center; color: var(--text-muted); padding: 2rem;">Cargando eventos...</p>
+                    </div>
+
+
+                </div>
+
+            </section>
+
+            <!-- Sección: Comunicación -->
+            <section id="comunicacion" class="content-section">
+                <div class="section-header">
+                    <h2>Gestión de Comunicación</h2>
+                    <p>Configura las plantillas de correo y mensajes.</p>
+                </div>
+
+                <!-- Importación de Datos -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <h3><i class="ph ph-users-three"></i> Importar Participantes (Google Forms .csv)</h3>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                        Adjunta el archivo CSV. El sistema detectará automáticamente DNIs, Nombres y Correos
+                        (Institucional >
+                        Personal).
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <input type="file" id="csv-file-input" accept=".csv" class="input-modern"
+                            style="max-width: 400px;">
+                        <button id="btn-process-csv" class="btn-primary"><i class="ph ph-play"></i> Cargar y
+                            Validar</button>
+                    </div>
+
+                    <!-- Tabla de Previsualización -->
+                    <div id="preview-container" class="hidden" style="margin-top: 1.5rem; overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th width="100">Estado</th>
+                                    <th>DNI</th>
+                                    <th>Participante</th>
+                                    <th>Correo Electrónico</th>
+                                    <th>Teléfono</th>
+                                    <th width="100">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="participants-table-body">
+                                <!-- JS Fill -->
+                            </tbody>
+                        </table>
+
+                        <div
+                            style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                            <span id="import-stats" style="color: var(--text-muted); font-size: 0.9rem;"></span>
+
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="text" id="contact-label" placeholder="Etiqueta (Ej: Webinar)"
+                                    class="input-modern small" style="width: 150px;">
+                                <button id="btn-export-contacts" class="btn-primary" disabled>
+                                    <i class="ph ph-export"></i> Exportar Contactos Google
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid-layout">
+                    <div class="card">
+                        <h3><i class="ph ph-envelope-simple"></i> Plantilla de Correo</h3>
+                        <form class="template-form">
+                            <div class="form-group">
+                                <label>Asunto del Correo</label>
+                                <input type="text" placeholder="Ej: Su constancia de participación..."
+                                    class="input-modern">
+                            </div>
+                            <div class="form-group">
+                                <label>Cuerpo del Mensaje</label>
+                                <textarea placeholder="Hola {nombre}, adjunto encontrarás..."
+                                    class="input-modern area"></textarea>
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn-secondary">Vista Previa</button>
+                                <button type="button" class="btn-primary">Guardar Plantilla</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="card">
+                        <h3><i class="ph ph-list-dashes"></i> Variables Disponibles</h3>
+                        <ul class="variables-list">
+                            <li><code>{nombre}</code> - Nombre del destinatario</li>
+                            <li><code>{curso}</code> - Nombre del curso/evento</li>
+                            <li><code>{fecha}</code> - Fecha de emisión</li>
+                            <li><code>{codigo}</code> - Código único</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="card"
+                    style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 2rem;">
+                    <h3><i class="ph ph-paper-plane-tilt"></i> Generar Datos para Envío (Manual)</h3>
+
+                    <div class="card"
+                        style="margin-bottom: 2rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2);">
+                        <h4 style="color: #f59e0b; margin-bottom: 0.5rem;"><i class="ph ph-warning-circle"></i>
+                            Importante</h4>
+                        <p style="font-size: 0.9rem; color: var(--text-muted);">
+                            Al usar este método (copiar y pegar en CCO/BCC), todos recibirán el <b>mismo mensaje
+                                genérico</b>.
+                            No es posible personalizar nombres individuales automáticamente en este modo.
+                        </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label>1. Lista de Correos (Para pegar en CCO / BCC)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <textarea id="manual-emails" class="input-modern area" readonly
+                                style="height: 100px; font-family: monospace; font-size: 0.85rem;"
+                                placeholder="Aquí aparecerán los correos de la lista importada..."></textarea>
+                            <button class="btn-secondary" onclick="copyToClipboard('manual-emails')" title="Copiar"><i
+                                    class="ph ph-copy"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>2. Asunto Final</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <input type="text" id="manual-subject" class="input-modern" readonly
+                                placeholder="Se copiará del formulario de arriba...">
+                            <button class="btn-secondary" onclick="copyToClipboard('manual-subject')" title="Copiar"><i
+                                    class="ph ph-copy"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>3. Cuerpo del Mensaje Final (Genérico)</label>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <textarea id="manual-body" class="input-modern area" readonly style="height: 200px;"
+                                placeholder="Se generará una versión limpia del mensaje..."></textarea>
+                            <button class="btn-secondary" onclick="copyToClipboard('manual-body')" title="Copiar"><i
+                                    class="ph ph-copy"></i></button>
+                        </div>
+                    </div>
+
+                    <div class="action-bar" style="margin-top: 1rem;">
+                        <button id="btn-generate-manual" class="btn-primary large"><i
+                                class="ph ph-arrows-clockwise"></i> Generar Datos Ahora</button>
+                        <a id="mailto-link" href="#" class="btn-secondary large hidden" target="_blank"><i
+                                class="ph ph-envelope-open"></i> Abrir Correo</a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sección: Generación -->
+            <section id="generacion" class="content-section">
+                <div class="section-header">
+                    <h2>Generación de Constancias</h2>
+                    <p>Sube tu base de datos y genera los certificados en PDF.</p>
+                </div>
+
+                <div class="upload-area">
+                    <div class="drop-zone">
+                        <i class="ph ph-upload-simple"></i>
+                        <h3>Arrastra tu archivo CSV o Excel aquí</h3>
+                        <p>o haz clic para seleccionar</p>
+                        <button class="btn-secondary">Seleccionar Archivo</button>
+                    </div>
+                </div>
+
+                <div class="preview-area placeholder">
+                    <i class="ph ph-image"></i>
+                    <p>La vista previa del certificado aparecerá aquí</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal para Crear Evento -->
+    <div id="event-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="ph ph-calendar-plus"></i> Crear Nuevo Evento</h2>
+                <button class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="event-form">
+                    <!-- 1. Tipo de Evento -->
+                    <div class="form-group">
+                        <label for="event-type">Tipo de Evento</label>
+                        <select id="event-type" class="input-modern" required>
+                            <option value="" disabled selected>Seleccione un tipo...</option>
+                            <option value="Taller">Taller</option>
+                            <option value="Webinar">Webinar</option>
+                            <option value="Curso">Curso</option>
+                            <option value="Capacitación">Capacitación</option>
+                            <option value="Apertura Académica">Apertura Académica</option>
+                            <option value="Kick Off Académico">Kick Off Académico</option>
+                            <option value="Consultoría">Consultoría (participación o asistencia técnica)</option>
+                            <option value="Reunión Académica">Reunión Académica</option>
+                            <option value="Seminario">Seminario</option>
+                            <option value="Congreso">Congreso</option>
+                            <option value="Simposio">Simposio</option>
+                            <option value="Coloquio">Coloquio</option>
+                            <option value="Foro Académico">Foro Académico</option>
+                            <option value="Jornada Académica">Jornada Académica</option>
+                            <option value="Encuentro de Investigación">Encuentro de Investigación</option>
+                            <option value="Hackathon Académico">Hackathon Académico</option>
+                            <option value="Mesa Redonda">Mesa Redonda</option>
+                            <option value="Presentación de Libro">Presentación de Libro o Investigación</option>
+                            <option value="Masterclass">Masterclass</option>
+                            <option value="Bootcamp">Bootcamp</option>
+                            <option value="Networking Académico">Networking Académico</option>
+                            <option value="Demo Day">Demo Day</option>
+                            <option value="Open House Académico">Open House Académico</option>
+                            <option value="Feria de Carreras">Feria de Carreras</option>
+                            <option value="Semana Académica">Semana Académica</option>
+                            <option value="Panel de Expertos">Panel de Expertos</option>
+                            <option value="Conversatorio">Conversatorio</option>
+                            <option value="Clínica Académica">Clínica Académica</option>
+                            <option value="Programa de Especialización">Programa de Especialización</option>
+                            <option value="Diplomado">Diplomado</option>
+                            <option value="Certificación Internacional">Certificación Internacional</option>
+                            <option value="Curso de Actualización">Curso de Actualización Profesional</option>
+                            <option value="Taller Práctico">Taller Práctico Especializado</option>
+                            <option value="Laboratorio Académico">Laboratorio Académico</option>
+                            <option value="Programa Ejecutivo">Programa Ejecutivo</option>
+                            <option value="Programa In Company">Programa In Company</option>
+                        </select>
+                    </div>
+
+                    <!-- 2. Nombre del Evento -->
+                    <div class="form-group">
+                        <label for="event-name">Nombre del Evento</label>
+                        <input type="text" id="event-name" class="input-modern"
+                            placeholder="Ej: Taller de Robótica Avanzada" required>
+                    </div>
+
+                    <!-- 3. Modalidad -->
+                    <div class="form-group">
+                        <label>Modalidad</label>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="modality" value="Virtual" checked>
+                                <span>Virtual</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="modality" value="Presencial">
+                                <span>Presencial</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="modality" value="Hibrido">
+                                <span>Híbrido</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 4. Sedes (Condicional) -->
+                    <div id="sedes-container" class="form-group hidden">
+                        <label>Sedes (Selección Múltiple)</label>
+                        <div class="checkbox-grid">
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="AQP"> Arequipa
+                                (AQP)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="PRC"> Surco
+                                (PRC)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="NOR"> Lima Norte
+                                (NOR)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="ATE"> Ate
+                                (ATE)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="SJL"> San Juan de
+                                Lurigancho (SJL)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="VES"> Villa el
+                                Salvador (VES)</label>
+                        </div>
+                    </div>
+
+                    <!-- 5. Fechas y Horas -->
+                    <div class="form-group">
+                        <label>Horario</label>
+                        <div id="schedule-list">
+                            <!-- Filas de horario se agregan dinámicamente -->
+                        </div>
+                        <button type="button" id="add-schedule-btn" class="btn-secondary small"><i
+                                class="ph ph-plus"></i> Agregar Fecha</button>
+                    </div>
+
+                    <!-- 6. Público Objetivo -->
+                    <div class="form-group">
+                        <label>Dirigido A</label>
+                        <div class="checkbox-grid">
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="1"
+                                    class="audience-check"> 1er Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="2"
+                                    class="audience-check"> 2do Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="3"
+                                    class="audience-check"> 3er Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="4"
+                                    class="audience-check"> 4to Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="5"
+                                    class="audience-check"> 5to Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="6+"
+                                    class="audience-check"> 6to Ciclo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="Egresados"
+                                    class="audience-check"> Egresados</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="Docentes"
+                                    class="audience-check"> Docentes</label>
+                            <label class="checkbox-option"><input type="checkbox" name="audience" value="Publico"
+                                    class="audience-check"> Público en General</label>
+                        </div>
+                        <div class="audience-summary-box">
+                            <small>Resumen de audiencia:</small>
+                            <p id="audience-summary-text" class="summary-text">-</p>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary close-modal">Cancelar</button>
+                        <button type="submit" class="btn-primary">Guardar Evento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Modal para Gestionar Estado -->
+    <div id="status-modal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-arrows-clockwise"></i> Gestionar Estado del Evento</h2>
+                <button class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div id="status-event-info" style="margin-bottom: 1.5rem;">
+                    <!-- Llenado por JS -->
+                </div>
+
+                <div class="status-transition">
+                    <div style="text-align: center; margin-bottom: 1rem;">
+                        <span id="current-status-badge" class="event-status"></span>
+                        <i class="ph ph-arrow-right" style="margin: 0 1rem; color: var(--text-muted);"></i>
+                        <span id="next-status-badge" class="event-status"></span>
+                    </div>
+
+                    <div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px;">
+                        <h4 style="margin-bottom: 0.5rem;">Requisitos para avanzar:</h4>
+                        <ul id="req-list" style="list-style: none; padding: 0;">
+                            <!-- Requisitos generados por JS -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Opciones Especiales -->
+                <div style="margin-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                    <div style="display: flex; gap: 1rem; justify-content: space-between;">
+                        <button id="btn-show-postponer" class="btn-secondary small" style="flex: 1;"><i
+                                class="ph ph-clock"></i> Postergar Evento</button>
+                        <button id="btn-show-cancelar" class="btn-secondary small"
+                            style="flex: 1; border-color: rgba(248, 113, 113, 0.5); color: #f87171;"><i
+                                class="ph ph-warning-circle"></i> Cancelar Evento</button>
+                    </div>
+
+                    <!-- Contenedor dinámico de sustento -->
+                    <div id="sustento-container" class="hidden"
+                        style="margin-top: 1rem; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+                        <h4 id="sustento-title" style="margin-bottom: 0.5rem;">Sustento</h4>
+                        <p id="sustento-desc"
+                            style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;"></p>
+                        <textarea id="sustento-text" class="input-modern area"
+                            placeholder="Escribe el motivo detallado de esta acción..."></textarea>
+
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem; justify-content: flex-end;">
+                            <button id="btn-cancel-special" class="btn-secondary small">Atrás</button>
+                            <button id="btn-confirm-special" class="btn-primary small">Confirmar Acción</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary close-modal">Cerrar</button>
+                <button type="button" id="btn-advance-status" class="btn-primary">Avanzar Estado</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js?v=2026-v6-strict-csv"></script>
+</body>
+
+</html>
