@@ -168,7 +168,14 @@ document.addEventListener('DOMContentLoaded', () => {
                         text = `Estudiantes del ${mapBack[min]} al ${mapBack[max]} ciclo`;
                     }
                 } else {
-                    text = 'Estudiantes (ciclos seleccionados)';
+                    // Formatear ciclos no consecutivos: "Estudiantes del 1er y 5to ciclo"
+                    const cycleNames = sorted.map(c => mapBack[c]);
+                    if (cycleNames.length === 2) {
+                        text = `Estudiantes del ${cycleNames[0]} y ${cycleNames[1]} ciclo`;
+                    } else {
+                        const last = cycleNames.pop();
+                        text = `Estudiantes del ${cycleNames.join(', ')} y ${last} ciclo`;
+                    }
                 }
             }
 
@@ -243,9 +250,122 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Function to load ponentes para el Select
+    async function loadPonentes() {
+        try {
+            const { data: ponentes, error } = await supabase
+                .from('ponentes')
+                .select('*')
+                .order('apellidos', { ascending: true });
+
+            if (error) throw error;
+
+            const selectPonente = document.getElementById('event-ponente');
+            if (!selectPonente) return;
+
+            // Limpiar y dejar Pendiente y Agregar
+            selectPonente.innerHTML = `
+                <option value="Pendiente">Pendiente</option>
+                <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+ Agregar nuevo ponente...</option>
+            `;
+
+            // Insertar opciones antes del botón de Agregar (es el último)
+            ponentes.forEach(p => {
+                if (p.nombres === 'Pendiente') return; // Saltar el default que ya pusimos duro arriba
+
+                const option = document.createElement('option');
+                const fullName = `${p.apellidos ? p.apellidos + ',' : ''} ${p.nombres}`.trim();
+                option.value = fullName;
+                option.textContent = fullName + (p.tipo_docente === 'Docente CERTUS' ? ' (CERTUS)' : '');
+
+                // Insertar justo antes del último
+                selectPonente.insertBefore(option, selectPonente.lastElementChild);
+            });
+
+        } catch (e) {
+            console.error("Error cargando ponentes:", e);
+        }
+    }
+
+    // Lógica para agregar Nuevo Ponente
+    const selectPonente = document.getElementById('event-ponente');
+    const newPonenteModal = document.getElementById('new-ponente-modal');
+    const newPonenteForm = document.getElementById('new-ponente-form');
+    let previousPonenteValue = 'Pendiente';
+
+    if (selectPonente) {
+        selectPonente.addEventListener('change', (e) => {
+            if (e.target.value === 'new_ponente') {
+                newPonenteModal.classList.add('active');
+                if (newPonenteForm) newPonenteForm.reset();
+            } else {
+                previousPonenteValue = e.target.value;
+            }
+        });
+    }
+
+    // Botones del Modal Ponente
+    const closeNewPonenteBtn = document.getElementById('close-new-ponente');
+    const cancelNewPonenteBtn = document.getElementById('btn-cancel-ponente');
+
+    const closePonenteModal = () => {
+        newPonenteModal.classList.remove('active');
+        selectPonente.value = previousPonenteValue; // Restaurar selección
+    };
+
+    if (closeNewPonenteBtn) closeNewPonenteBtn.addEventListener('click', closePonenteModal);
+    if (cancelNewPonenteBtn) cancelNewPonenteBtn.addEventListener('click', closePonenteModal);
+
+    if (newPonenteForm) {
+        newPonenteForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-ponente');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Guardando...';
+            btn.disabled = true;
+
+            const nombres = document.getElementById('ponente-nombres').value.trim();
+            const apellidos = document.getElementById('ponente-apellidos').value.trim();
+            const tipo = document.getElementById('ponente-tipo').value;
+            const especialidad = document.getElementById('ponente-especialidad').value.trim();
+
+            try {
+                const { error: insertError } = await supabase
+                    .from('ponentes')
+                    .insert([{ nombres, apellidos, tipo_docente: tipo, especialidad }]);
+
+                if (insertError) throw insertError;
+
+                Swal.fire({
+                    toast: true, position: 'top-end', icon: 'success', title: 'Ponente guardado',
+                    showConfirmButton: false, timer: 2000
+                });
+
+                await loadPonentes(); // Recargar opciones
+
+                newPonenteModal.classList.remove('active');
+                const newNameCombo = `${apellidos ? apellidos + ',' : ''} ${nombres}`.trim();
+                previousPonenteValue = newNameCombo;
+
+                // Intentar seleccionar el recien creado (asegurarse de que existan los valores)
+                setTimeout(() => {
+                    selectPonente.value = newNameCombo;
+                }, 100);
+
+            } catch (err) {
+                console.error("Error guardando ponente:", err);
+                Swal.fire('Error', 'No se pudo guardar el ponente', 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        });
+    }
+
     // Exponer globalmente y cargar al inicio
     window.loadEvents = loadEvents;
     loadEvents();
+    loadPonentes();
 
     function applyFilters() {
         const searchInput = document.getElementById('search-filter');
@@ -341,285 +461,219 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Global variable to keep track of current dashboard month
+    let currentDashboardDate = new Date(); // Start at current month
+
     // Function to render Dashboard Calendar
     function renderDashboardCalendar(events) {
-        const headerRow = document.getElementById('schedule-header-row');
-        const body = document.getElementById('schedule-body');
-        if (!headerRow || !body) return;
+        const grid = document.getElementById('monthly-calendar-grid');
+        const monthLabel = document.getElementById('current-month-label');
+        if (!grid || !monthLabel) return;
 
-        // Reset
-        headerRow.innerHTML = '<th style="padding: 1rem; border-right: 1px solid var(--border-color); width: 80px; position: sticky; left: 0; background: #0f172a; color: #f8fafc; z-index: 2; border-bottom: 2px solid var(--border-color); text-transform: uppercase;">Turno</th>';
-        body.innerHTML = '';
+        // Configuration
+        const year = currentDashboardDate.getFullYear();
+        const month = currentDashboardDate.getMonth();
 
-        const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
-        const turnos = ['M', 'T', 'N'];
-        const turnoLabels = { 'M': 'MAÑANA', 'T': 'TARDE', 'N': 'NOCHE' };
+        // Update label
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        monthLabel.textContent = `${monthNames[month]} ${year}`;
 
-        // Create header th items for days
-        diasSemana.forEach(dia => {
-            const th = document.createElement('th');
-            th.style.padding = '0.5rem';
-            th.style.borderRight = '1px solid var(--border-color)';
-            th.style.borderBottom = '2px solid var(--border-color)';
-            th.style.minWidth = '140px';
-            th.style.fontWeight = 'bold';
-            th.style.cssText += 'background: var(--bg-color); z-index:1; font-size: 0.9rem; text-align: center;';
-            th.textContent = dia;
-            headerRow.appendChild(th);
+        grid.innerHTML = '';
+
+        // Generate Days of Week Header
+        const daysOfWeek = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+        daysOfWeek.forEach(day => {
+            const dayEl = document.createElement('div');
+            dayEl.style.background = '#0f172a';
+            dayEl.style.color = '#cbd5e1';
+            dayEl.style.padding = '10px 5px';
+            dayEl.style.textAlign = 'center';
+            dayEl.style.fontWeight = 'bold';
+            dayEl.style.fontSize = '0.85rem';
+            dayEl.style.textTransform = 'uppercase';
+            grid.appendChild(dayEl);
+            dayEl.textContent = day;
         });
 
-        let hasAnyEvent = false;
+        // Generate Grid Cells
+        const firstDayOfMonth = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-        // Structure: weeksMap.get(mondayTime) -> { schedule: array[7][3], dates: array[7], mondayStr }
-        const weeksMap = new Map();
+        // JS getDay() -> Sunday is 0. We want Monday to be 0 for our grid.
+        let startOffset = firstDayOfMonth - 1;
+        if (startOffset < 0) startOffset = 6; // Sunday becomes 6
 
-        function getMondayString(dateString) {
-            const [y, m, d] = dateString.split('-');
-            const dateObj = new Date(y, m - 1, d);
-            const day = dateObj.getDay();
-            const diff = dateObj.getDate() - day + (day === 0 ? -6 : 1);
-            const monday = new Date(dateObj.setDate(diff));
-            return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
+        // Previous month days to fill the gap
+        const daysInPrevMonth = new Date(year, month, 0).getDate();
+        for (let i = 0; i < startOffset; i++) {
+            const cell = createCalendarCell(daysInPrevMonth - startOffset + i + 1, true);
+            grid.appendChild(cell);
         }
 
-        function ensureWeekExists(mondayStr) {
-            if (!weeksMap.has(mondayStr)) {
-                const arr = [];
-                for (let i = 0; i < 7; i++) {
-                    arr[i] = { M: [], T: [], N: [] };
-                }
+        // Current month cells
+        const cellsMap = new Map(); // Para mapear dateStr -> bloque de eventos HTML
+        for (let day = 1; day <= daysInMonth; day++) {
+            const cell = createCalendarCell(day, false);
 
-                const [y, m, d] = mondayStr.split('-');
-                const monDate = new Date(y, m - 1, d);
-                const datesArr = [];
-                for (let i = 0; i < 7; i++) {
-                    const current = new Date(monDate);
-                    current.setDate(monDate.getDate() + i);
-                    datesArr.push(`${current.getDate()}/${current.getMonth() + 1}/${current.getFullYear().toString().slice(-2)}`);
-                }
+            // Generate full date string for mapping
+            const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-                weeksMap.set(mondayStr, {
-                    dates: datesArr,
-                    schedule: arr,
-                    mondayStr: mondayStr
-                });
+            const eventsContainer = document.createElement('div');
+            eventsContainer.style.display = 'flex';
+            eventsContainer.style.flexDirection = 'column';
+            eventsContainer.style.gap = '4px';
+            eventsContainer.style.marginTop = '8px';
+
+            cell.appendChild(eventsContainer);
+            cellsMap.set(dateStr, eventsContainer);
+            grid.appendChild(cell);
+        }
+
+        // Next month days to fill the row (total 42 cells is common for 6 rows)
+        const totalCells = startOffset + daysInMonth;
+        const remainder = totalCells % 7;
+        if (remainder !== 0) {
+            for (let i = 1; i <= 7 - remainder; i++) {
+                const cell = createCalendarCell(i, true);
+                grid.appendChild(cell);
             }
         }
 
+        // Sort events chronologically to render them properly
+        const flatEvents = [];
         events.forEach(ev => {
             if (ev.estado_especial === 'Cancelado') return;
-
             let horarios = [];
             try { horarios = JSON.parse(ev.horario); } catch (e) { }
-            if (!Array.isArray(horarios)) return;
-
-            horarios.forEach(h => {
-                if (!h.fecha || !h.inicio) return;
-
-                const mondayStr = getMondayString(h.fecha);
-                ensureWeekExists(mondayStr);
-
-                const [y, m, d] = h.fecha.split('-');
-                const dObj = new Date(y, m - 1, d);
-                let jsDay = dObj.getDay();
-                let colIndex = jsDay === 0 ? 6 : jsDay - 1;
-
-                const horaNumerica = parseInt(h.inicio.split(':')[0], 10);
-                let turnoActual = 'M';
-                if (horaNumerica >= 13 && horaNumerica < 18) turnoActual = 'T';
-                if (horaNumerica >= 18) turnoActual = 'N';
-
-                weeksMap.get(mondayStr).schedule[colIndex][turnoActual].push({
-                    nombre: ev.nombre,
-                    tipo: ev.tipo,
-                    fechaStr: h.fecha,
-                    inicio: h.inicio,
-                    fin: h.fin,
-                    status: ev.status,
-                    modalidad: ev.modalidad,
-                    raw: ev // keep raw data for onClick
+            if (Array.isArray(horarios)) {
+                horarios.forEach(h => {
+                    if (h.fecha && h.inicio) {
+                        flatEvents.push({ raw: ev, h: h });
+                    }
                 });
-
-                hasAnyEvent = true;
-            });
+            }
         });
 
-        if (!hasAnyEvent) {
-            body.innerHTML = '<tr><td colspan="8" style="padding: 2rem; color: var(--text-muted);">No hay horarios registrados.</td></tr>';
-            return;
+        // Ordenar por hora de inicio
+        flatEvents.sort((a, b) => a.h.inicio.localeCompare(b.h.inicio));
+
+        // Filter events for current month and place them
+        flatEvents.forEach(act => {
+            const h = act.h;
+            const ev = act.raw;
+
+            // h.fecha comes in yyyy-mm-dd
+            if (cellsMap.has(h.fecha)) {
+                const block = document.createElement('div');
+
+                // Styling
+                let bg = '#1e293b';
+                let bd = '#334155';
+                let tc = '#f8fafc';
+                let borderLeftColor = '#3b82f6';
+
+                const lowerNombre = (ev.nombre + " " + ev.tipo).toLowerCase();
+
+                if (lowerNombre.includes('audi') || lowerNombre.includes('pln') || lowerNombre.includes('reforzamiento')) {
+                    borderLeftColor = '#06b6d4';
+                } else if (lowerNombre.includes('taller')) {
+                    if (lowerNombre.includes('carmen')) borderLeftColor = '#a3e635';
+                    else if (lowerNombre.includes('finan')) borderLeftColor = '#86efac';
+                    else if (lowerNombre.includes('docen') || lowerNombre.includes('docent')) borderLeftColor = '#fb923c';
+                    else borderLeftColor = '#818cf8';
+                } else if (lowerNombre.includes('testeo')) {
+                    borderLeftColor = '#fde047';
+                } else if (lowerNombre.includes('kick off')) {
+                    borderLeftColor = '#fca5a5';
+                } else {
+                    if (ev.status === 7) borderLeftColor = '#10b981';
+                    else if (ev.status > 0) borderLeftColor = '#3b82f6';
+                    else borderLeftColor = '#64748b';
+                }
+
+                block.style.background = bg;
+                block.style.border = `1px solid ${bd}`;
+                block.style.borderLeft = `3px solid ${borderLeftColor}`;
+                block.style.color = tc;
+                block.style.padding = '8px 10px';
+                block.style.fontSize = '0.9rem';
+                block.style.lineHeight = '1.4';
+                block.style.borderRadius = '6px';
+                block.style.cursor = 'pointer';
+                block.style.transition = 'transform 0.1s, background 0.1s';
+                block.style.overflow = 'hidden';
+                block.style.display = 'flex';
+                block.style.flexDirection = 'column';
+                block.style.gap = '4px';
+
+                block.onmouseenter = () => { block.style.background = '#334155'; block.style.transform = 'scale(1.02)'; };
+                block.onmouseleave = () => { block.style.background = bg; block.style.transform = 'scale(1)'; };
+                block.onclick = () => window.showDashboardEventDetails(ev);
+
+                const ponenteText = ev.ponente && ev.ponente.toLowerCase() !== 'pendiente' ? ev.ponente : 'Docente por Asignar';
+
+                block.innerHTML = `
+                    <div style="font-weight: 600; font-size: 0.95rem; color: #f8fafc; line-height: 1.2;">${ev.nombre}</div>
+                    <div style="font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                        <i class="ph ph-user"></i> ${ponenteText}
+                    </div>
+                    <div style="font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
+                        <i class="ph ph-clock"></i> ${h.inicio} - ${h.fin}
+                    </div>
+                `;
+
+                cellsMap.get(h.fecha).appendChild(block);
+            }
+        });
+
+        // Setup Button Listeners only once to avoid stacking them
+        const btnPrev = document.getElementById('btn-prev-month');
+        const btnNext = document.getElementById('btn-next-month');
+
+        // Remove old listeners using clone trick
+        const newBtnPrev = btnPrev.cloneNode(true);
+        const newBtnNext = btnNext.cloneNode(true);
+        btnPrev.parentNode.replaceChild(newBtnPrev, btnPrev);
+        btnNext.parentNode.replaceChild(newBtnNext, btnNext);
+
+        newBtnPrev.addEventListener('click', () => {
+            currentDashboardDate.setMonth(currentDashboardDate.getMonth() - 1);
+            renderDashboardCalendar(events);
+        });
+
+        newBtnNext.addEventListener('click', () => {
+            currentDashboardDate.setMonth(currentDashboardDate.getMonth() + 1);
+            renderDashboardCalendar(events);
+        });
+    }
+
+    function createCalendarCell(dayNumber, isMuted) {
+        const cell = document.createElement('div');
+        cell.style.background = 'var(--card-bg)';
+        cell.style.minHeight = '140px';
+        cell.style.padding = '8px';
+
+        const dayLabel = document.createElement('div');
+        dayLabel.textContent = dayNumber;
+        dayLabel.style.fontWeight = 'bold';
+        dayLabel.style.fontSize = '0.9rem';
+        dayLabel.style.color = isMuted ? '#475569' : '#e2e8f0';
+
+        // Highlight today
+        const today = new Date();
+        if (!isMuted && dayNumber === today.getDate() && currentDashboardDate.getMonth() === today.getMonth() && currentDashboardDate.getFullYear() === today.getFullYear()) {
+            dayLabel.style.color = '#3b82f6'; // Blue text
+            dayLabel.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+            dayLabel.style.display = 'inline-block';
+            dayLabel.style.width = '24px';
+            dayLabel.style.height = '24px';
+            dayLabel.style.lineHeight = '24px';
+            dayLabel.style.textAlign = 'center';
+            dayLabel.style.borderRadius = '50%';
         }
 
-        const sortedMondays = Array.from(weeksMap.keys()).sort();
-
-        sortedMondays.forEach((mondayStr, index) => {
-            const weekData = weeksMap.get(mondayStr);
-            const weekNum = index + 1;
-
-            // --- FECHA ROW --- 
-            const trFecha = document.createElement('tr');
-            trFecha.style.background = '#1e293b'; // professional dark slate
-
-            const tdTitFecha = document.createElement('td');
-            tdTitFecha.style.padding = '0.5rem';
-            tdTitFecha.style.fontWeight = 'bold';
-            tdTitFecha.style.borderRight = '1px solid var(--border-color)';
-            tdTitFecha.style.borderBottom = '1px solid var(--border-color)';
-            tdTitFecha.style.borderTop = '2px solid rgba(148, 163, 184, 0.5)'; // Demarcate week top
-            tdTitFecha.style.position = 'sticky';
-            tdTitFecha.style.left = '0';
-            tdTitFecha.style.background = '#0f172a'; // darker slate
-            tdTitFecha.style.zIndex = '1';
-            tdTitFecha.style.textAlign = 'center';
-            tdTitFecha.style.fontSize = '0.75rem';
-            tdTitFecha.style.color = '#cbd5e1';
-            tdTitFecha.innerHTML = `<span style="color:#94a3b8; font-weight: normal; font-size: 0.8rem; letter-spacing: 1px;">FECHAS</span>`;
-            trFecha.appendChild(tdTitFecha);
-
-            for (let i = 0; i < 7; i++) {
-                const tdD = document.createElement('td');
-                tdD.style.padding = '0.5rem';
-                tdD.style.borderRight = '1px solid var(--border-color)';
-                tdD.style.borderBottom = '1px solid var(--border-color)';
-                tdD.style.borderTop = '2px solid rgba(124, 58, 237, 0.5)';
-                tdD.style.textAlign = 'center';
-
-                // Color tweaks matching image (weekends vs weekdays)
-                if (i === 5 || i === 6) {
-                    tdD.style.color = '#c4b5fd';
-                } else {
-                    tdD.style.color = '#fbbf24';
-                }
-
-                tdD.style.fontWeight = 'bold';
-                tdD.style.fontSize = '0.9rem';
-                tdD.style.background = 'rgba(124, 58, 237, 0.2)'; // purple background per day matching Excel
-                tdD.textContent = weekData.dates[i];
-                trFecha.appendChild(tdD);
-            }
-            body.appendChild(trFecha);
-
-            // --- M, T, N ROWS ---
-            turnos.forEach((t, tIndex) => {
-                const tr = document.createElement('tr');
-                if (t === 'N') tr.style.borderBottom = '3px solid rgba(148, 163, 184, 0.5)'; // Demarcate end of week
-                else tr.style.borderBottom = '1px solid var(--border-color)';
-
-                // Turno Column
-                const tdTurno = document.createElement('td');
-                tdTurno.style.padding = '0.5rem';
-                tdTurno.style.fontWeight = '600';
-                tdTurno.style.borderRight = '1px solid var(--border-color)';
-                tdTurno.style.position = 'sticky';
-                tdTurno.style.left = '0';
-                tdTurno.style.background = '#0f172a'; // darker slate
-                tdTurno.style.zIndex = '1';
-                tdTurno.style.textAlign = 'center';
-                tdTurno.style.fontSize = '0.8rem';
-                tdTurno.style.color = '#f8fafc';
-                tdTurno.innerHTML = turnoLabels[t];
-                tr.appendChild(tdTurno);
-
-                for (let i = 0; i < 7; i++) {
-                    const tdEvents = document.createElement('td');
-                    tdEvents.style.padding = '0.2rem';
-                    tdEvents.style.borderRight = '1px solid var(--border-color)';
-                    tdEvents.style.verticalAlign = 'top';
-                    tdEvents.style.minWidth = '140px';
-
-                    const acts = weekData.schedule[i][t];
-
-                    acts.sort((a, b) => a.inicio.localeCompare(b.inicio));
-
-                    if (acts.length > 0) {
-                        acts.forEach(act => {
-                            const block = document.createElement('div');
-
-                            // Advanced color mapping approximating the Excel colors
-                            let bg = 'rgba(56, 189, 248, 0.2)';
-                            let bd = 'rgba(56, 189, 248, 0.4)';
-                            let tc = '#ffffff';
-
-                            const lowerNombre = (act.nombre + " " + act.tipo).toLowerCase();
-
-                            if (lowerNombre.includes('audi') || lowerNombre.includes('pln') || lowerNombre.includes('reforzamiento')) {
-                                bg = '#06b6d4'; // Cyan matching "Reforzamiento PLN" and "AUDI V"
-                                bd = '#0891b2';
-                                tc = '#000000';
-                            } else if (lowerNombre.includes('taller')) {
-                                if (lowerNombre.includes('carmen')) {
-                                    bg = '#a3e635'; // Lime Green matching "Taller Costos Carmen Laurie"
-                                    bd = '#65a30d';
-                                    tc = '#000000';
-                                } else if (lowerNombre.includes('finan')) {
-                                    bg = '#86efac'; // Light green matching "Taller Financiero"
-                                    bd = '#22c55e';
-                                    tc = '#000000';
-                                } else if (lowerNombre.includes('docen') || lowerNombre.includes('docent')) {
-                                    bg = '#fb923c'; // Orange matching "Taller Concar Docent"
-                                    bd = '#ea580c';
-                                    tc = '#000000';
-                                } else {
-                                    bg = '#818cf8'; // Indigo for generic Taller instead of yellow
-                                    bd = '#4f46e5';
-                                    tc = '#ffffff';
-                                }
-                            } else if (lowerNombre.includes('testeo')) {
-                                bg = '#fde047'; // Yellow matching "Testeo Talleres"
-                                bd = '#ca8a04';
-                                tc = '#000000';
-                            } else if (lowerNombre.includes('kick off')) {
-                                bg = '#fca5a5'; // subtle red/orange for Kick off
-                                bd = '#dc2626';
-                                tc = '#000000';
-                            } else {
-                                // Default depending on status if no textual match
-                                if (act.status === 7) {
-                                    bg = 'rgba(16, 185, 129, 0.3)';
-                                    bd = 'rgba(16, 185, 129, 0.5)';
-                                } else if (act.status > 0) {
-                                    bg = 'rgba(56, 189, 248, 0.2)';
-                                    bd = 'rgba(56, 189, 248, 0.4)';
-                                } else {
-                                    bg = 'rgba(255, 255, 255, 0.05)';
-                                    bd = 'rgba(255,255,255,0.1)';
-                                }
-                            }
-
-                            block.style.background = bg;
-                            block.style.border = `1px solid ${bd}`;
-                            block.style.color = tc;
-                            block.style.padding = '0.5rem';
-                            block.style.marginBottom = '2px';
-                            block.style.textAlign = 'center';
-                            block.style.fontSize = '0.8rem';
-                            block.style.lineHeight = '1.2';
-                            block.style.borderRadius = '2px';
-                            block.style.cursor = 'pointer';
-                            block.style.transition = 'transform 0.1s ease';
-
-                            block.onmouseenter = () => block.style.transform = 'scale(1.02)';
-                            block.onmouseleave = () => block.style.transform = 'scale(1)';
-
-                            block.onclick = () => window.showDashboardEventDetails(act.raw);
-
-                            const actPonente = act.raw.ponente && act.raw.ponente.toLowerCase() !== 'pendiente' ? `<br><span style="font-size: 0.75rem; opacity: 0.85;"><i class="ph ph-user"></i> ${act.raw.ponente}</span>` : '';
-                            block.innerHTML = `
-                                <strong>${act.nombre}</strong>${actPonente}<br>
-                                <span style="font-size: 0.75rem; opacity: 0.8; font-weight: normal;">${act.inicio} - ${act.fin}</span>
-                            `;
-                            tdEvents.appendChild(block);
-                        });
-                    } else {
-                        tdEvents.innerHTML = '';
-                        tdEvents.style.background = 'rgba(255,255,255,0.02)'; // extremely subtle alternating bg for empty cells
-                    }
-
-                    tr.appendChild(tdEvents);
-                }
-
-                body.appendChild(tr);
-            });
-        });
+        cell.appendChild(dayLabel);
+        return cell;
     }
 
     // Modal popup for seeing dashboard event details
@@ -686,9 +740,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
                 <p style="margin-bottom: 0.7rem;"><strong>Tipo:</strong> <span style="color: #1e293b;">${eventData.tipo}</span></p>
+                <p style="margin-bottom: 0.7rem;"><strong>Responsable:</strong> <span style="color: #1e293b;">${eventData.responsable || 'No especificado'}</span></p>
+                <p style="margin-bottom: 1.2rem; padding: 8px; background: rgba(59,130,246,0.05); border-radius: 6px;">
+                    <strong style="display:block; margin-bottom: 4px;">Descripción:</strong> 
+                    <span style="color: #334155; font-size:0.9rem;">${eventData.descripcion_evento || 'Sin descripción'}</span>
+                </p>
+                <p style="margin-bottom: 0.7rem;"><strong>Modalidad / Público:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
                 <p style="margin-bottom: 0.7rem;"><strong>Modalidad / Público:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
                 <p><strong>Estado Actual:</strong> <span style="display:inline-block; margin-left: 0.5rem; padding: 0.2rem 0.6rem; background: ${statusColor}22; color: ${statusColor}; border-radius: 4px; font-weight: bold;">${statusBadgeLabel}</span></p>
-        `;
+            <div class="detail-label"><i class="ph ph-hash"></i> ID Sincronización</div>
+            <div class="detail-value" style="font-family: monospace; font-size:0.8rem; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius:4px;">${eventData.sheet_id || 'Generado Localmente / No Sincronizado'}</div>
+        </div>`;
 
         if (eventData.sustento) {
             htmlContent += `<div style="margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.04); border-left: 3px solid ${statusColor}; border-radius: 4px;">
@@ -783,7 +845,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Populate fields
         document.getElementById('event-type').value = eventData.tipo;
         document.getElementById('event-name').value = eventData.nombre;
-        document.getElementById('event-ponente').value = eventData.ponente && eventData.ponente !== 'Pendiente' ? eventData.ponente : '';
+
+        // Ponente check if exists in options
+        const selectPonente = document.getElementById('event-ponente');
+        let ponenteFound = false;
+        Array.from(selectPonente.options).forEach(opt => {
+            if (opt.value === eventData.ponente) ponenteFound = true;
+        });
+
+        if (ponenteFound) {
+            selectPonente.value = eventData.ponente;
+        } else {
+            selectPonente.value = 'Pendiente';
+        }
+
+        document.getElementById('event-responsable').value = eventData.responsable || '';
+        document.getElementById('event-descripcion').value = eventData.descripcion_evento || '';
 
         // Modality
         document.querySelector(`input[name="modality"][value="${eventData.modalidad}"]`).checked = true;
@@ -904,10 +981,13 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
 
+        // Build Data Payload
         const data = {
             tipo: document.getElementById('event-type').value,
             nombre: document.getElementById('event-name').value,
             ponente: document.getElementById('event-ponente').value.trim() || 'Pendiente',
+            responsable: document.getElementById('event-responsable').value.trim(),
+            descripcion_evento: document.getElementById('event-descripcion').value.trim(),
             modalidad: document.querySelector('input[name="modality"]:checked').value,
             sedes: sedes,
             horario: JSON.stringify(schedule),
@@ -916,11 +996,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!currentEditEventId) {
             data.status = 0; // Default start status only for new events
-        }
-
-
-
-        try {
+        } try {
             if (currentEditEventId) {
                 // UPDATE EXISTING EVENT
                 const { error: updateError } = await supabase
@@ -929,7 +1005,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     .eq('id', currentEditEventId);
 
                 if (updateError) throw updateError;
-                Swal.fire('¡Éxito!', 'Evento actualizado exitosamente.', 'success');
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: '¡Evento actualizado exitosamente!',
+                    showConfirmButton: false,
+                    timer: 3000
+                });
                 currentEditEventId = null;
             } else {
                 // CREATE NEW EVENT
@@ -938,7 +1021,115 @@ document.addEventListener('DOMContentLoaded', () => {
                     .insert([data]);
 
                 if (insertError) throw insertError;
-                Swal.fire('¡Éxito!', 'Evento guardado exitosamente.', 'success');
+
+                // ¡EVENTO CREADO EXITOSAMENTE EN BD LOCAL!
+                // GENERACIÓN DE TEXTO PARA GOOGLE SHEETS PARA COPIADO DIRECTO
+                try {
+                    const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+                    let iniObj = new Date();
+                    let finObj = new Date();
+                    let fechaInicioStr = '';
+                    let fechaFinStr = '';
+                    let primeraHora = '';
+                    let mesNombre = '';
+
+                    if (schedule && schedule.length > 0) {
+                        const partesIni = schedule[0].fecha.split('-');
+                        if (partesIni.length === 3) {
+                            iniObj = new Date(partesIni[0], partesIni[1] - 1, partesIni[2]);
+                            fechaInicioStr = `${partesIni[2]}/${partesIni[1]}/${partesIni[0]}`;
+                        }
+
+                        const partesFin = schedule[schedule.length - 1].fecha.split('-');
+                        if (partesFin.length === 3) {
+                            finObj = new Date(partesFin[0], partesFin[1] - 1, partesFin[2]);
+                            fechaFinStr = `${partesFin[2]}/${partesFin[1]}/${partesFin[0]}`;
+                        }
+
+                        mesNombre = meses[iniObj.getMonth()] || '';
+
+                        // Formatear hora (Ej: 17:30 -> 5:30 p. m.)
+                        if (schedule[0].inicio) {
+                            const [hh, mm] = schedule[0].inicio.split(':');
+                            let mH = parseInt(hh, 10);
+                            let ampm = mH >= 12 ? 'p. m.' : 'a. m.';
+                            mH = mH % 12;
+                            if (mH === 0) mH = 12;
+                            primeraHora = `${mH}:${mm} ${ampm}`;
+                        }
+                    }
+
+                    // Determinar Sede o Todas
+                    let finalSede = data.sedes ? data.sedes : 'Todas';
+                    if (data.modalidad === 'Virtual') finalSede = 'Todas';
+
+                    // Generador algorítmico de ID basado en la fecha o aleatorio simple si la DB no nos devuelve ID en el insert standard
+                    const letraMes = mesNombre.substring(0, 3).toUpperCase();
+                    const letraTipo = data.tipo.substring(0, 1).toUpperCase();
+                    const dayPrefix = iniObj.getDate() || Math.floor(Math.random() * 100);
+                    const suggestedSheetId = `${dayPrefix}${letraMes}-${letraTipo}`;
+
+                    // Asignamos el ID sugerido al evento web insertado de forma limpia
+                    try {
+                        const insertedRecordId = rawEvents ? rawEvents[0]?.id : null;
+                        // Como el insert standard puede no retornar el objeto, nos apoyamos de la UI pero intentamos forzar el update del nuevo evento.
+                    } catch (e) { }
+
+                    const gSheetsDataFormated = [
+                        mesNombre,
+                        fechaInicioStr,
+                        fechaFinStr,
+                        primeraHora,
+                        data.tipo, // Col 4: Tipo (lo usamos como Título base en la exportación si es Taller/Curso o pegamos el nombre)
+                        data.nombre, // Col 5: Actividad
+                        (data.descripcion_evento || '').trim(), // Col 6: Descripcion
+                        data.ponente && data.ponente !== 'Pendiente' ? data.ponente : '', // Col 7: Ponente ? a Vertical (En su Excel 'Finanzas' está en col 7 a 9 despues de descripcion)
+                        'Finanzas', // Vertical asumiendo siempre
+                        document.getElementById('audience-summary-text').textContent || '', // Publico Obj
+                        '', // Publico Obj Detalle
+                        data.modalidad, // Modalidad
+                        finalSede, // Sede
+                        data.responsable || '', // Resp local
+                        '0/7 En proyecto', // Estado local
+                        suggestedSheetId // ID
+                    ].join('\t');
+
+                    setTimeout(() => {
+                        Swal.fire({
+                            title: '¡Evento Creado!',
+                            html: `
+                                <div style="text-align: left; font-size: 0.95rem; line-height: 1.5; color: #cbd5e1;">
+                                    <p>El evento fue guardado en el Dashboard web.</p>
+                                    <p style="margin-top: 10px;">Para guardar el registro en <b>Google Sheets</b> alineado a tus columnas, haz clic en <b>Copiar Registro</b> y pégalo (Ctrl+V) en tu Excel online (desde la celda de MES).</p>
+                                    <textarea readonly id="sheet-export-data" style="width: 100%; height: 80px; margin-top: 15px; font-family: monospace; font-size: 0.8rem; padding: 10px; border-radius: 6px; border: 1px solid #3b82f6; resize: none; background: #0f172a; color:#f8fafc;" class="input-modern">${gSheetsDataFormated}</textarea>
+                                </div>
+                            `,
+                            icon: 'success',
+                            showCancelButton: true,
+                            confirmButtonText: '<i class="ph ph-copy"></i> Copiar Registro',
+                            cancelButtonText: 'Cerrar',
+                            confirmButtonColor: '#3b82f6',
+                            cancelButtonColor: '#64748b'
+                        }).then((result) => {
+                            if (result.isConfirmed) {
+                                navigator.clipboard.writeText(gSheetsDataFormated).then(() => {
+                                    Swal.fire({
+                                        toast: true,
+                                        position: 'top-end',
+                                        icon: 'success',
+                                        title: '¡Copiado! Ahora pégalo en Google Sheets',
+                                        showConfirmButton: false,
+                                        timer: 3000
+                                    });
+                                });
+                            }
+                        });
+                    }, 500);
+
+                } catch (e) {
+                    console.error("Error generando texto para Google Sheets:", e);
+                    Swal.fire('¡Éxito!', 'Evento guardado exitosamente.', 'success');
+                }
             }
 
             modal.classList.remove('active');
@@ -1665,6 +1856,457 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     };
+
+    // --- IMPORTADOR DESDE GOOGLE SHEETS EXCEL ---
+    const importExcelBtn = document.getElementById('btn-import-excel');
+    const importExcelModal = document.getElementById('import-event-modal');
+    const importExcelData = document.getElementById('import-event-data');
+    const importPreview = document.getElementById('import-preview');
+    const importPreviewContent = document.getElementById('import-preview-content');
+    const btnProcessImport = document.getElementById('btn-process-import');
+
+    let parsedImportEventData = null;
+
+    if (importExcelBtn) {
+        importExcelBtn.addEventListener('click', () => {
+            if (importExcelData) importExcelData.value = '';
+            if (importPreview) importPreview.classList.add('hidden');
+            if (btnProcessImport) btnProcessImport.disabled = true;
+            if (importExcelModal) importExcelModal.classList.add('active');
+            parsedImportEventData = null;
+        });
+    }
+
+    if (importExcelData) {
+        importExcelData.addEventListener('input', async () => {
+            const pastedText = importExcelData.value.trim();
+            if (!pastedText) {
+                importPreview.classList.add('hidden');
+                btnProcessImport.disabled = true;
+                return;
+            }
+
+            // Las filas pueden separarse por enter (\n)
+            const rows = pastedText.split(/\r?\n/).filter(r => r.trim() !== '');
+            if (rows.length === 0) {
+                btnProcessImport.disabled = true;
+                return;
+            }
+
+            parsedImportEventData = [];
+            let validCount = 0;
+            let previewHTML = '';
+
+            rows.forEach((rowData, index) => {
+                // Soportar delimitador de Tab (\t) (delimitador por defecto al copiar desde sheets) o Pipeline (|) usado por el usuario en el requerimiento.
+                const cols = rowData.split('\t').length > rowData.split('|').length ? rowData.split('\t') : rowData.split('|');
+
+                // Si la fila no tiene al menos la mínima cantidad de columnas (ej. 10 para llegar al ID), se saltea o marca inválida
+                if (cols.length < 10) {
+                    previewHTML += `<p style="color: #f87171; grid-column: 1 / -1; font-size: 0.8rem;"><i class="ph ph-warning"></i> Fila ${index + 1}: Faltan columnas (detectadas ${cols.length}). Revisa el formato.</p>`;
+                    return;
+                }
+
+                try {
+                    // Mapeo Basado en requerimiento
+                    // 0: Mes
+                    // 1: Inicio
+                    // 2: Fin
+                    // 3: Hora
+                    // 4: Tipo
+                    // 5: Actividad
+                    // 6: Descripción
+                    // 7: Responsable / Ponente (Depende de cómo se estructure, usamos lo copiado, pero el user dijo Ponente y luego área)
+                    // Evaluando estructura del USER:
+                    // 0: Mes (FEBRERO)
+                    // 1: Inicio (12/02/2026)
+                    // 2: Fin (12/02/2026)
+                    // 3: Hora (5:30 p. m.)
+                    // 4: Tipo de Evento (Webinar)
+                    // 5: Actividad / Evento (Declaración Jurada...)
+                    // 6: Descripción (Webinar a cargo del docente PTD Juan Carlos Costilla...)
+                    // 7: Responsable(s) (Juan Costilla)
+                    // 8: Vertical/Área (Finanzas)
+                    // 9: Público Objetivo (Estudiantes / Egresados)
+                    // 10: Público Detalle (Estudiantes y egresados COT)
+                    // 11: Modalidad (Virtual )
+                    // 12: Sede (Todas las sedes virtuales)
+                    // 13: Creador/Responsable general (José)
+                    // 14: Estado (7/7 Concluido)
+                    // 15: ID (2FEB-W)
+
+                    // IMPLEMENTACIÓN HEURÍSTICA DE COLUMNAS PARA EVITAR DESFASES POR CELDAS VACÍAS (PIPES | )
+                    let inicioStr = '', finStr = '', horaStr = '', titulo = 'Desconocido', descripcion = '';
+                    let vertical = '', publico = '', modalidadStr = 'Virtual', sedeDesc = 'Todas', responsableBase = '', sheetId = '';
+
+                    let ptr = 1;
+                    if (cols[ptr] && typeof cols[ptr] === 'string' && (cols[ptr].match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) || cols[ptr].includes('-'))) inicioStr = cols[ptr++].trim();
+                    if (cols[ptr] && typeof cols[ptr] === 'string' && (cols[ptr].match(/\d{1,2}\/\d{1,2}\/\d{2,4}/) || cols[ptr].includes('-'))) finStr = cols[ptr++].trim();
+                    // Hora o am/pm o ':' (ej. 3:00, 15:00, 3 am)
+                    if (cols[ptr] && typeof cols[ptr] === 'string' && cols[ptr].match(/(?:[0-2]?[0-9]:[0-5][0-9])|(?:a\.?\s*m\.?|p\.?\s*m\.?)/i)) horaStr = cols[ptr++].trim();
+
+                    let ePtr = cols.length - 1;
+
+                    // 1. Encontrar el sheet ID leyendo desde el final buscando patrón alfanumérico corto o con guión (Ej. 6MAR, 17FEB-W)
+                    if (cols[ePtr] && cols[ePtr].length <= 10 && !cols[ePtr].toLowerCase().includes('conclu') && !cols[ePtr].toLowerCase().includes('proyec')) {
+                        sheetId = cols[ePtr--].trim();
+                    } else if (cols[ePtr] && (cols[ePtr].toLowerCase().includes('conclu') || cols[ePtr].toLowerCase().includes('proyec'))) {
+                        // ID ignorado u omitido en la copiada
+                    } else {
+                        // Búsqueda profunda de ID
+                        for (let i = cols.length - 1; i >= Math.max(0, cols.length - 4); i--) {
+                            const c = cols[i]?.trim();
+                            if (c && c.length <= 12 && (c.includes('-') || (/\d/.test(c) && /[a-zA-Z]/.test(c))) && !c.includes('/')) {
+                                sheetId = c;
+                                ePtr = i - 1;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!sheetId) {
+                        previewHTML += `<p style="color: #f87171; grid-column: 1 / -1; font-size: 0.8rem;"><i class="ph ph-warning"></i> Fila ${index + 1}: No se pudo detectar el código ID en esta fila.</p>`;
+                        return;
+                    }
+
+                    // 2. Saltar la columna de Estado si está
+                    if (ePtr >= 0 && cols[ePtr] && (cols[ePtr].toLowerCase().includes('conclu') || cols[ePtr].toLowerCase().includes('proyec') || cols[ePtr].toLowerCase().includes('difund') || cols[ePtr].match(/^\d\/\d/))) {
+                        ePtr--;
+                    }
+
+                    // 3. Encontrar y anclarnos en la columna "Modalidad" (Virtual/Presencial/Hibrido) navegando hacia atrás
+                    let modIdx = -1;
+                    for (let i = ePtr; i >= ptr; i--) {
+                        let cLow = (cols[i] || '').trim().toLowerCase();
+                        if (cLow === 'virtual' || cLow === 'presencial' || cLow === 'hibrido' || cLow === 'híbrido' || cLow.startsWith('virtual')) {
+                            modalidadStr = cols[i].trim();
+                            modIdx = i;
+                            break;
+                        }
+                    }
+
+                    let vIdx = -1;
+                    if (modIdx !== -1) {
+                        // Si encontramos modalidad, lo que está a la derecha es sede y responsable
+                        if (modIdx + 1 <= ePtr) sedeDesc = cols[modIdx + 1].trim();
+                        if (modIdx + 2 <= ePtr) responsableBase = cols[modIdx + 2].trim();
+
+                        // Lo que está a la izquierda es Público y Vertical
+                        if (modIdx - 1 >= ptr) publico = cols[modIdx - 1].trim();
+                        if (modIdx - 2 >= ptr) {
+                            vertical = cols[modIdx - 2].trim();
+                            vIdx = modIdx - 2;
+                        }
+                    } else {
+                        // Respaldo de emergencia si no hay texto de modalidad explícito (poco probable en este proyecto)
+                        vIdx = Math.max(ptr, ePtr - 4);
+                    }
+
+                    // Todo lo que quede desde 'ptr' (después de las fechas/hora) hasta 'vIdx' (antes de la vertical) es el TITULO y DESCRIPCIÓN
+                    const endTitulo = vIdx !== -1 ? vIdx : ePtr + 1;
+                    const remaining = [];
+                    for (let i = ptr; i < endTitulo; i++) {
+                        if (cols[i] && cols[i].trim()) remaining.push(cols[i].trim());
+                    }
+
+                    if (remaining.length > 0) titulo = remaining[0];
+                    if (remaining.length > 1) descripcion = remaining.slice(1).join(' | ');
+
+                    // Inferir Tipo de Evento en el "campo 5" (Descripción) o en el Título "campo 4"
+                    let tipo = 'Curso';
+                    const textoBuscqueda = (titulo + ' ' + descripcion).toLowerCase();
+                    if (textoBuscqueda.includes('taller')) tipo = 'Taller';
+                    else if (textoBuscqueda.includes('webinar')) tipo = 'Webinar';
+                    else if (textoBuscqueda.includes('capacitacion') || textoBuscqueda.includes('capacitación')) tipo = 'Capacitación';
+                    else if (textoBuscqueda.includes('kick off')) tipo = 'Kick Off Académico';
+
+                    // Inferir Ponente de la descripción
+                    let ponente = 'Pendiente';
+                    const expPonente = descripcion.match(/(?:docente|ponente)\s+(?:PTD\s+|PTC\s+)?([A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑa-záéíóúñ]+)*)/i);
+                    if (expPonente && expPonente[1]) {
+                        ponente = expPonente[1].split(' dirigido a ')[0].trim();
+                    } else if (descripcion.includes(' a cargo de ')) {
+                        ponente = descripcion.split(' a cargo de ')[1]?.split(' dirigido a ')[0]?.replace(/PTD\s+|PTC\s+/ig, '').trim() || ponente;
+                    } else if (descripcion.includes(' a cargo del docente ')) {
+                        ponente = descripcion.split(' a cargo del docente ')[1]?.split(' dirigido a ')[0]?.replace(/PTD\s+|PTC\s+/ig, '').trim() || ponente;
+                    }
+
+                    // Inferir Público
+                    let finalAudiencia = publico;
+                    const pubLower = publico.toLowerCase();
+                    let ciclos = [];
+
+                    if (pubLower.includes('estudiante') && (!pubLower.includes('ciclo') && !pubLower.match(/1er|2do|3er|4to|5to|6to| i | ii | iii | iv | v | vi/g))) {
+                        // Si dice estudiantes y no especifica, todos los ciclos
+                        ciclos = ['1', '2', '3', '4', '5', '6+'];
+                    } else {
+                        // Inferir por menciones
+                        if (pubLower.match(/1er| i\b/)) ciclos.push('1');
+                        if (pubLower.match(/2do| ii\b/)) ciclos.push('2');
+                        if (pubLower.match(/3er| iii\b/)) ciclos.push('3');
+                        if (pubLower.match(/4to| iv\b/)) ciclos.push('4');
+                        if (pubLower.match(/5to| v\b/)) ciclos.push('5');
+                        if (pubLower.match(/6to| vi\b/)) ciclos.push('6+');
+                    }
+                    if (pubLower.includes('egresado')) ciclos.push('Egresados');
+                    if (pubLower.includes('docente')) ciclos.push('Docentes');
+                    if (pubLower.includes('carrera') || pubLower.includes('publico') || pubLower.includes('público')) ciclos.push('Publico');
+
+                    if (ciclos.length > 0) {
+                        finalAudiencia = `${publico} (${[...new Set(ciclos)].join(', ')})`;
+                    }
+
+                    // Normalizar Modalidad
+                    let modalidad = 'Virtual';
+                    if (modalidadStr.toLowerCase().includes('presencial')) modalidad = 'Presencial';
+                    else if (modalidadStr.toLowerCase().includes('hibrid') || modalidadStr.toLowerCase().includes('híbrid')) modalidad = 'Hibrido';
+
+                    // Normalizar Fechas
+                    let fechaFormateadaIni = '';
+                    let fechaFormateadaFin = '';
+
+                    const formatFecha = (fStr) => {
+                        if (!fStr) return '';
+                        let parts = fStr.split('/');
+                        if (parts.length === 3) {
+                            let d = parts[0].trim().padStart(2, '0');
+                            let m = parts[1].trim().padStart(2, '0');
+                            let y = parts[2].trim();
+                            if (y.length === 2) y = '20' + y;
+                            return `${y}-${m}-${d}`;
+                        }
+                        return '';
+                    };
+
+                    fechaFormateadaIni = formatFecha(inicioStr);
+                    fechaFormateadaFin = formatFecha(finStr) || fechaFormateadaIni;
+
+                    // Normalizar Horas
+                    let horaFormatoIni = '00:00';
+                    let horaFormatoFin = '23:59';
+                    if (horaStr) {
+                        const hm = horaStr.toLowerCase().match(/(\d+):(\d+)(?:\s*)(a\.?\s*m\.?|am|p\.?\s*m\.?|pm)?/);
+                        if (hm) {
+                            let h = parseInt(hm[1]);
+                            let m = hm[2];
+                            let isPm = hm[3] && (hm[3].includes('p') || hm[3].includes('pm'));
+                            if (isPm && h < 12) h += 12;
+                            if (!isPm && h === 12) h = 0;
+
+                            horaFormatoIni = `${h.toString().padStart(2, '0')}:${m}`;
+                            horaFormatoFin = `${((h + 2) % 24).toString().padStart(2, '0')}:${m}`; // Suma 2 hrs aprox por defecto
+                        }
+                    }
+
+                    const horarioGenerado = [{
+                        fecha: fechaFormateadaIni, // El esquema actual solo soporta una fecha inicio si no son repeticiones múltiples
+                        inicio: horaFormatoIni,
+                        fin: horaFormatoFin
+                    }];
+
+                    // Sedes
+                    let sedesFinales = 'Todas';
+                    if (modalidad !== 'Virtual') {
+                        if (sedeDesc.toLowerCase().includes('arequipa') || sedeDesc.includes('AQP')) sedesFinales = 'AQP';
+                        else if (sedeDesc.toLowerCase().includes('surco') || sedeDesc.includes('PRC')) sedesFinales = 'PRC';
+                        else sedesFinales = sedeDesc.substring(0, 15); // Fallback
+                    }
+
+                    // Objeto UPSERT
+                    parsedImportEventData.push({
+                        sheet_id: sheetId,
+                        tipo: tipo,
+                        nombre: titulo,
+                        ponente: ponente,
+                        responsable: responsableBase || ponente, // Fallback si no hay responsable explícito
+                        descripcion_evento: descripcion,
+                        modalidad: modalidad,
+                        sedes: sedesFinales,
+                        horario: JSON.stringify(horarioGenerado),
+                        audiencia: finalAudiencia
+                        // Notice: Status is intentionally not updated if event exists (or set below for new)
+                    });
+
+                    // Añadir Info al Preview
+                    if (validCount < 3) { // Solo mostrar previo de máximo 3 eventos para no saturar
+                        previewHTML += `
+                          <div style="grid-column: 1/-1; background: rgba(59, 130, 246, 0.1); padding: 5px; border-left: 3px solid #3b82f6; margin-bottom: 5px;">
+                            <strong>${sheetId}:</strong> ${titulo} (${fechaFormateadaIni} ${horaFormatoIni}) <br>
+                            <span style="font-size:0.75rem; color:#94a3b8;">Ponente: ${ponente} | Resp: ${responsableBase} | Mod: ${modalidad}</span>
+                          </div>
+                        `;
+                    }
+                    validCount++;
+
+                } catch (e) {
+                    console.error("Error interpretando fila ", index, e);
+                }
+            });
+
+            if (validCount > 0 || previewHTML.trim() !== '') {
+                importPreview.classList.remove('hidden');
+                importPreviewContent.innerHTML = `<div style="grid-column: 1/-1; text-align:center;"><i class="ph ph-spinner ph-spin"></i> Analizando base de datos local y consolidando...</div>`;
+                btnProcessImport.disabled = true;
+
+                try {
+                    const checkIds = parsedImportEventData.map(e => e.sheet_id);
+                    const { data: preExist } = await supabase.from('eventos').select('sheet_id').in('sheet_id', checkIds);
+                    const extSet = new Set((preExist || []).map(r => r.sheet_id));
+                    let countExis = 0; let countNuevos = 0;
+                    parsedImportEventData.forEach(e => {
+                        if (extSet.has(e.sheet_id)) countExis++; else countNuevos++;
+                    });
+
+                    let countHeader = `<div style="grid-column: 1/-1; background:#0f172a; padding:10px; border-radius:8px; border-bottom: 3px solid #3b82f6;">
+                                        <h4 style="margin-bottom:5px; color:white;">Pre-visualización de ${validCount} eventos procesables</h4>
+                                        <p style="margin:0; font-size:0.8rem;"><span style="color:#22c55e; margin-right:8px;"><i class="ph ph-check-circle"></i> ${countNuevos} Nuevos</span> <span style="color:#eab308;"><i class="ph ph-arrows-clockwise"></i> ${countExis} Por Actualizar</span></p>
+                                       </div>`;
+
+                    if (validCount > 3) {
+                        previewHTML += `<div style="grid-column: 1/-1; text-align: center; color: #cbd5e1; font-size: 0.8rem;">...y ${validCount - 3} eventos más.</div>`;
+                    }
+                    importPreviewContent.innerHTML = countHeader + previewHTML;
+                    btnProcessImport.disabled = validCount === 0;
+                } catch (e) {
+                    console.error("Error validando localmente: ", e);
+                    if (validCount > 3) previewHTML += `<div style="grid-column: 1/-1; text-align: center; color: #cbd5e1; font-size: 0.8rem;">...y ${validCount - 3} eventos más.</div>`;
+                    importPreviewContent.innerHTML = previewHTML;
+                    btnProcessImport.disabled = validCount === 0;
+                }
+            } else {
+                importPreview.classList.add('hidden');
+                btnProcessImport.disabled = true;
+            }
+
+        });
+    }
+
+    if (btnProcessImport) {
+        btnProcessImport.addEventListener('click', async () => {
+            if (!parsedImportEventData || parsedImportEventData.length === 0) return;
+
+            const btn = btnProcessImport;
+            const textOrig = btn.innerHTML;
+            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Sincronizando...';
+            btn.disabled = true;
+
+            try {
+                // AUTO-INDEXAR PONENTES 
+                const ponentesDetectadosMap = new Map();
+                parsedImportEventData.forEach(e => {
+                    if (e.ponente && e.ponente !== 'Pendiente') {
+                        // Determinar tipo_docente revisando la descripción del evento
+                        const isDocente = e.descripcion_evento.toLowerCase().includes('docente') || e.descripcion_evento.toLowerCase().includes('ponente');
+                        ponentesDetectadosMap.set(e.ponente.trim(), isDocente ? 'Docente' : 'Externo');
+                    }
+                });
+
+                const ponentesDetectados = Array.from(ponentesDetectadosMap.keys());
+
+                if (ponentesDetectados.length > 0) {
+                    const { data: dbPonentes, error: errPon } = await supabase.from('ponentes').select('nombres, apellidos');
+                    if (!errPon && dbPonentes) {
+                        const existingNames = dbPonentes.map(p => `${p.nombres} ${p.apellidos}`.trim().toLowerCase());
+                        const ponentesNuevos = [];
+
+                        ponentesDetectados.forEach(pDesc => {
+                            if (!existingNames.some(en => pDesc.toLowerCase().includes(en) || en.includes(pDesc.toLowerCase()))) {
+                                ponentesNuevos.push({
+                                    nombres: pDesc,
+                                    apellidos: '',
+                                    tipo_docente: ponentesDetectadosMap.get(pDesc),
+                                    especialidad: 'General'
+                                });
+                            }
+                        });
+
+                        if (ponentesNuevos.length > 0) {
+                            console.log("Creando ponentes nuevos detectados:", ponentesNuevos);
+                            await supabase.from('ponentes').insert(ponentesNuevos);
+                        }
+                    }
+                }
+
+                const sheetIdsToSync = parsedImportEventData.map(e => e.sheet_id);
+                const { data: existingRecords, error: fetchErr } = await supabase
+                    .from('eventos')
+                    .select('*')
+                    .in('sheet_id', sheetIdsToSync);
+
+                if (fetchErr) throw fetchErr;
+
+                const existingMap = new Map();
+                existingRecords.forEach(r => existingMap.set(r.sheet_id, r));
+
+                for (const ev of parsedImportEventData) {
+                    // ELIMINAR PROPIEDAD ID (si existe) PARA EVITAR HETEROGENEOUS ARRAY BUG EN SUPABASE UPSERT 
+                    delete ev.id;
+
+                    const existing = existingMap.get(ev.sheet_id);
+                    if (existing) {
+                        // Respetar su status o colocar default 0 (sin alterar ID)
+                        ev.status = existing.status || 0;
+                        ev.estado_especial = existing.estado_especial || null;
+                        ev.sustento = existing.sustento || null;
+
+                        // MERGE FUERTE: Si la DB ya tiene info y el Sheets dice cosas vacías, respetar DB.
+                        if ((!ev.ponente || ev.ponente === 'Pendiente') && existing.ponente) {
+                            ev.ponente = existing.ponente;
+                        }
+                        if ((!ev.responsable || ev.responsable === 'Desconocido' || ev.responsable === 'Pendiente') && existing.responsable) {
+                            ev.responsable = existing.responsable;
+                        }
+                        if (!ev.audiencia && existing.audiencia) {
+                            ev.audiencia = existing.audiencia;
+                        }
+                        if (!ev.descripcion_evento && existing.descripcion_evento) {
+                            ev.descripcion_evento = existing.descripcion_evento;
+                        }
+
+                        // Validar merge de horarios (si Sheets mandó horario dummy como 00:00 - 23:59 y DB sí tiene algo util)
+                        if (ev.horario && existing.horario) {
+                            try {
+                                const ph = JSON.parse(ev.horario);
+                                if (ph.length === 1 && ph[0].inicio === '00:00' && ph[0].fin === '23:59') {
+                                    ev.horario = existing.horario; // Restaurar el valido local
+                                }
+                            } catch (e) { }
+                        }
+                    } else {
+                        ev.status = 0; // New event starts at 0
+                    }
+                }
+
+                const { error: upsertError } = await supabase
+                    .from('eventos')
+                    .upsert(parsedImportEventData, { onConflict: 'sheet_id' });
+
+                if (upsertError) throw upsertError;
+
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'success',
+                    title: `¡${parsedImportEventData.length} eventos sincronizados con éxito!`,
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+
+                importExcelModal.classList.remove('active');
+                if (importExcelData) importExcelData.value = '';
+
+                // Recarga tabla Dashboard
+                loadEvents();
+
+            } catch (e) {
+                console.error("Error al sincronizar eventos: ", e);
+                Swal.fire('Error de Sincronización', e.message, 'error');
+            } finally {
+                btn.innerHTML = textOrig;
+                btn.disabled = false;
+            }
+        });
+    }
 
 });
 

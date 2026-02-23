@@ -91,22 +91,19 @@
                 </div>
 
                 <div class="calendar-wrapper card"
-                    style="overflow-x: auto; border-radius: 12px; border: 1px solid var(--border-color); padding: 0;">
-                    <table id="schedule-table" class="schedule-table"
-                        style="width: 100%; border-collapse: collapse; text-align: center; min-width: 800px;">
-                        <thead>
-                            <tr id="schedule-header-row"
-                                style="background: var(--card-bg); border-bottom: 2px solid var(--border-color);">
-                                <th
-                                    style="padding: 1rem; border-right: 1px solid var(--border-color); width: 150px; position: sticky; left: 0; background: var(--card-bg); z-index: 2;">
-                                    Turno</th>
-                                <!-- Dias llenados por JS -->
-                            </tr>
-                        </thead>
-                        <tbody id="schedule-body">
-                            <!-- Filas llenadas por JS (Mañana, Tarde, Noche) -->
-                        </tbody>
-                    </table>
+                    style="max-width: 1400px; margin: 0 auto; border-radius: 12px; border: 1px solid var(--border-color); padding: 0;">
+                    <div id="calendar-controls"
+                        style="display: flex; justify-content: space-between; padding: 1rem; background: var(--card-bg); border-bottom: 1px solid var(--border-color);">
+                        <button id="btn-prev-month" class="btn-icon small"><i class="ph ph-caret-left"></i></button>
+                        <h3 id="current-month-label" style="margin: 0; font-size: 1.1rem; color: var(--text-color);">Mes
+                            Actual</h3>
+                        <button id="btn-next-month" class="btn-icon small"><i class="ph ph-caret-right"></i></button>
+                    </div>
+
+                    <div id="monthly-calendar-grid"
+                        style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--border-color); border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; overflow: hidden;">
+                        <!-- JS generará aquí los días de la semana y las celdas de números de día -->
+                    </div>
                 </div>
             </section>
 
@@ -122,6 +119,8 @@
                 <div class="events-container">
                     <!-- Filtros / Buscador -->
                     <div class="events-filters">
+                        <button id="btn-import-excel" class="btn-secondary small" style="margin-right: 1rem;"><i
+                                class="ph ph-file-xls"></i> Importar desde Excel</button>
                         <input type="text" id="search-filter" placeholder="Buscar evento..." class="input-modern small">
                         <select id="status-filter" class="input-modern small">
                             <option value="all">Todos los estados</option>
@@ -379,8 +378,26 @@
                     <!-- 2.5 Ponente -->
                     <div class="form-group">
                         <label for="event-ponente">Ponente / Expositor</label>
-                        <input type="text" id="event-ponente" class="input-modern"
-                            placeholder="Dejar en blanco para guardar como 'Pendiente'">
+                        <select id="event-ponente" class="input-modern" required>
+                            <option value="Pendiente">Pendiente</option>
+                            <!-- Se llenará con JavaScript -->
+                            <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+ Agregar
+                                nuevo ponente...</option>
+                        </select>
+                    </div>
+
+                    <!-- 2.6 Responsable -->
+                    <div class="form-group">
+                        <label for="event-responsable">Responsables (Opcional)</label>
+                        <input type="text" id="event-responsable" class="input-modern"
+                            placeholder="Ej: Eduardo / Jorge">
+                    </div>
+
+                    <!-- 2.7 Descripción Corta -->
+                    <div class="form-group">
+                        <label for="event-descripcion">Descripción breve (Opcional)</label>
+                        <textarea id="event-descripcion" class="input-modern area" style="height: 60px;"
+                            placeholder="Breve sumario del contenido del evento..."></textarea>
                     </div>
 
                     <!-- 3. Modalidad -->
@@ -470,7 +487,75 @@
     </div>
     </div>
 
-    <!-- Modal para Gestionar Estado -->
+    <!-- Modal para Importar Evento -->
+    <div id="import-event-modal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="ph ph-file-xls"></i> Importar Evento (Google Sheets)</h2>
+                <button class="close-modal"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem;">Copia una <b>fila
+                        completa</b> (desde la columna Mes hasta el final) de tu archivo de Google Sheets y pégala aquí
+                    abajo con Ctrl+V. ¡El sistema procesará los datos automáticamente!</p>
+                <textarea id="import-event-data" class="input-modern area"
+                    style="height: 120px; font-family: monospace; white-space: pre; overflow-x: auto; background: var(--bg-color);"
+                    placeholder="[Mes]	[Inicio]	[Fin]	[Hora]	[Actividad]	[Descripción breve]	[Vertical]	[Público objetivo]	[Modalidad]	[Sede / Ubicación]"></textarea>
+
+                <div id="import-preview" class="hidden"
+                    style="margin-top: 1.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 1rem; border-radius: 8px;">
+                    <h4 style="margin-bottom: 0.5rem; color: var(--primary-color);">Previsualización del Evento:</h4>
+                    <div id="import-preview-content"
+                        style="font-size: 0.85rem; color: #cbd5e1; display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <!-- JS Llenado -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary close-modal">Cancelar</button>
+                <button type="button" id="btn-process-import" class="btn-primary" disabled><i class="ph ph-check"></i>
+                    Guardar Evento</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Nuevo Ponente -->
+    <div id="new-ponente-modal" class="modal-overlay" style="z-index: 2000;">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-user-plus"></i> Registrar Nuevo Ponente</h2>
+                <button class="close-modal" id="close-new-ponente"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="new-ponente-form">
+                    <div class="form-group">
+                        <label>Nombres</label>
+                        <input type="text" id="ponente-nombres" class="input-modern" required placeholder="Nombres">
+                    </div>
+                    <div class="form-group">
+                        <label>Apellidos</label>
+                        <input type="text" id="ponente-apellidos" class="input-modern" required placeholder="Apellidos">
+                    </div>
+                    <div class="form-group">
+                        <label>Tipo de Docente</label>
+                        <select id="ponente-tipo" class="input-modern">
+                            <option value="Externo">Externo</option>
+                            <option value="Docente CERTUS">Docente CERTUS</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Especialidad (Opcional)</label>
+                        <input type="text" id="ponente-especialidad" class="input-modern"
+                            placeholder="Ej: Contabilidad, Tributación...">
+                    </div>
+                    <div class="modal-footer" style="margin-top:20px; padding:0; border:none;">
+                        <button type="button" class="btn-secondary" id="btn-cancel-ponente">Cancelar</button>
+                        <button type="submit" class="btn-primary" id="btn-save-ponente">Guardar Ponente</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
     <div id="status-modal" class="modal-overlay">
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">

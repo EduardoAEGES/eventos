@@ -1,0 +1,50 @@
+Para guardar los nuevos eventos en tu Google Sheet automáticamente, debes crear un "Web App" usando Google Apps Script en tu archivo de Excel (Google Sheets).
+
+Sigue estos pasos detalladamente:
+
+1. Abre tu archivo de Google Sheets: https://docs.google.com/spreadsheets/d/1C5g0edxXBCn0RonP_MY_JOdwof7JCZhG9IzWbmS-h-k/edit?usp=sharing
+2. En el menú superior, ve a "Extensiones" -> "Apps Script".
+3. Se abrirá una nueva pestaña con un editor de código. Borra todo el código que haya allí y pega el siguiente código:
+
+// --- COPIA DESDE AQUÍ --- //
+
+function doPost(e) {
+  try {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+    const data = JSON.parse(e.postData.contents);
+    
+    // Asignar variables según el payload enviado desde la app
+    const mes = data.mes || '';
+    const inicio = data.inicio || '';
+    const fin = data.fin || '';
+    const hora = data.hora || '';
+    const actividad = data.actividad || '';
+    const descripcion = data.descripcion || '';
+    const vertical = data.vertical || 'Finanzas';
+    const publico = data.publico || '';
+    const modalidad = data.modalidad || '';
+    const sede = data.sede || '';
+    const responsables = data.responsables || '';
+
+    // Agregar la fila
+    sheet.appendRow([mes, inicio, fin, hora, actividad, descripcion, vertical, publico, modalidad, sede, responsables]);
+    
+    return ContentService.createTextOutput(JSON.stringify({ status: 'success', data: data })).setMimeType(ContentService.MimeType.JSON);
+  } catch(err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// --- HASTA AQUÍ --- //
+
+4. Haz clic en el ícono de disquete (Guardar proyecto) o presiona Ctrl+S.
+5. Haz clic en el botón azul arriba a la derecha que dice "Implementar" (o "Deploy" en inglés) -> "Nueva Implementación" (New deployment).
+6. En el engranaje "Seleccionar tipo", elige "Aplicación web" (Web app).
+7. En "Quién tiene acceso" (Who has access), selecciona "Cualquier persona" (Anyone). Esto es MUY IMPORTANTE, si no lo pones, el script bloqueará la petición.
+8. Haz clic en "Implementar" (Deploy).
+9. Te pedirá "Autorizar acceso". Sigue los pasos eligiendo tu cuenta, avanza a las opciones "Avanzadas" (Advanced) y haz clic en "Ir a [Tu Proyecto] (no seguro)". Luego presiona "Permitir" (Allow).
+10. Se generará una "URL de la aplicación web" (parece https://script.google.com/macros/s/.../exec). CÓPIALA.
+
+11. Finalmente, abre el código del archivo `script.js` en tu proyecto de VS Code, dirígete a la línea ~934 (donde dice 'AQUÍ_PONE_SU_URL_DE_WEB_APP') y REEMPLAZA ese texto entre comillas por la URL que acabas de copiar.
+
+¡Una vez realizado, cada vez que crees un evento se guardará como nuevo registro en Google Sheets!
