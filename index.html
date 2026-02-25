@@ -22,6 +22,9 @@
     <!-- SweetAlert2 para popups responsivos -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
+    <!-- PapaParse para procesado robusto de CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -74,7 +77,19 @@
         <main class="main-content">
             <header class="top-bar">
                 <h1 id="page-title">Panel de Control</h1>
-                <div class="actions">
+                <div class="actions" style="display: flex; gap: 10px;">
+                    <button class="btn-primary"
+                        onclick="window.open('https://docs.google.com/spreadsheets/d/1sHLHwIZbAXlThGj8qTY0QxVn68BL_zOGMvMPE73LfJs/edit?usp=sharing', '_blank')"
+                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                        <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i>
+                        Sheets CERTUS
+                    </button>
+                    <button class="btn-primary"
+                        onclick="window.open('https://docs.google.com/spreadsheets/d/1p34BL8wZua7Pv4G362HTZUkAVGc_s-1w7HMceZa61T8/edit?usp=sharing', '_blank')"
+                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.5); color: #10b981; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                        <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i>
+                        Sheets COT PLN
+                    </button>
                     <button class="btn-primary"
                         onclick="window.open('https://automatizardocumentos-pln-s8i2.onrender.com/', '_blank')"
                         style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
@@ -89,8 +104,22 @@
                 <div class="calendar-header"
                     style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h2>Cronograma General</h2>
-                    <div class="calendar-filters">
-                        <!-- Botones de navegación del calendario y selectores si se requieren a futuro -->
+                    <div class="calendar-filters" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <select id="calendar-visibility-filter" class="input-modern small">
+                            <option value="all">Todas las visibilidades</option>
+                            <option value="publico">Solo Públicos</option>
+                            <option value="privado">Solo Internos/Privados</option>
+                        </select>
+                        <select id="calendar-sede-filter" class="input-modern small">
+                            <option value="all">Todas las Sedes</option>
+                            <option value="Todas">Todas (Virtual/General)</option>
+                            <option value="AQP">Arequipa (AQP)</option>
+                            <option value="PRC">Surco (PRC)</option>
+                            <option value="NOR">Lima Norte (NOR)</option>
+                            <option value="ATE">Ate (ATE)</option>
+                            <option value="SJL">San Juan de Lurigancho (SJL)</option>
+                            <option value="VES">Villa el Salvador (VES)</option>
+                        </select>
                     </div>
                 </div>
 
@@ -122,10 +151,33 @@
 
                 <div class="events-container">
                     <!-- Filtros / Buscador -->
-                    <div class="events-filters">
-                        <button id="btn-import-excel" class="btn-secondary small" style="margin-right: 1rem;"><i
+                    <div class="events-filters" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                        <button id="btn-import-excel" class="btn-secondary small" style="margin-right: 0.5rem;"><i
                                 class="ph ph-file-xls"></i> Importar desde Excel</button>
                         <input type="text" id="search-filter" placeholder="Buscar evento..." class="input-modern small">
+
+                        <select id="month-filter" class="input-modern small">
+                            <option value="all">Todos los meses</option>
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+
+                        <select id="visibility-filter" class="input-modern small">
+                            <option value="all">Todas las visibilidades</option>
+                            <option value="publico">Solo Públicos</option>
+                            <option value="privado">Solo Internos/Privados</option>
+                        </select>
+
                         <select id="status-filter" class="input-modern small">
                             <option value="all">Todos los estados</option>
                             <option value="0">0/7 En proyecto</option>
@@ -224,7 +276,7 @@
                                     class="input-modern area"></textarea>
                             </div>
                             <div class="form-actions">
-                                <button type="button" class="btn-secondary">Vista Previa</button>
+                                <button t ype="button" class="btn-secondary">Vista Previa</button>
                                 <button type="button" class="btn-primary">Guardar Plantilla</button>
                             </div>
                         </form>
@@ -382,26 +434,55 @@
                     <!-- 2.5 Ponente -->
                     <div class="form-group">
                         <label for="event-ponente">Ponente / Expositor</label>
-                        <select id="event-ponente" class="input-modern" required>
-                            <option value="Pendiente">Pendiente</option>
-                            <!-- Se llenará con JavaScript -->
-                            <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+ Agregar
-                                nuevo ponente...</option>
-                        </select>
+                        <div style="display: flex; gap: 0.5rem; align-items: center;">
+                            <select id="event-ponente" class="input-modern" required style="flex: 1;">
+                                <option value="Pendiente">Pendiente</option>
+                                <!-- Se llenará con JavaScript -->
+                                <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+
+                                    Agregar nuevo ponente...</option>
+                            </select>
+                            <button type="button" id="btn-delete-ponente" class="btn-icon-remove"
+                                title="Eliminar ponente seleccionado"
+                                style="padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.1); color: #f87171; display: none;">
+                                <i class="ph ph-trash"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- 2.6 Responsable -->
                     <div class="form-group">
-                        <label for="event-responsable">Responsables (Opcional)</label>
-                        <input type="text" id="event-responsable" class="input-modern"
-                            placeholder="Ej: Eduardo / Jorge">
+                        <label>Responsables (Opcional, Selección Múltiple)</label>
+                        <div class="checkbox-grid" id="responsables-container">
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="Jorge">
+                                Jorge</label>
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="Eduardo">
+                                Eduardo</label>
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="José">
+                                José</label>
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="Mirko">
+                                Mirko</label>
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="Luis">
+                                Luis</label>
+                            <label class="checkbox-option"><input type="checkbox" name="responsable" value="Carlos">
+                                Carlos</label>
+                        </div>
                     </div>
 
-                    <!-- 2.7 Descripción Corta -->
-                    <div class="form-group">
-                        <label for="event-descripcion">Descripción breve (Opcional)</label>
-                        <textarea id="event-descripcion" class="input-modern area" style="height: 60px;"
-                            placeholder="Breve sumario del contenido del evento..."></textarea>
+
+
+                    <!-- 2.8 Visibilidad Pública -->
+                    <div class="form-group"
+                        style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1rem; border-radius: 8px;">
+                        <label class="checkbox-option"
+                            style="font-weight: 500; font-size: 0.95rem; display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; color: #10b981;">
+                            <input type="checkbox" id="event-is-public" name="is_public"
+                                style="width: 18px; height: 18px; margin-top: 2px;">
+                            <span>
+                                <strong>Evento compartido de forma pública</strong><br>
+                                <small style="color: var(--text-muted); font-weight: normal;">Aparecerá en el cronograma
+                                    general con un color distintivo y suma a la difusión externa.</small>
+                            </span>
+                        </label>
                     </div>
 
                     <!-- 3. Modalidad -->
@@ -417,8 +498,8 @@
                                 <span>Presencial</span>
                             </label>
                             <label class="radio-option">
-                                <input type="radio" name="modality" value="Hibrido">
-                                <span>Híbrido</span>
+                                <input type="radio" name="modality" value="Ambas">
+                                <span>Ambas</span>
                             </label>
                         </div>
                     </div>
@@ -427,6 +508,8 @@
                     <div id="sedes-container" class="form-group hidden">
                         <label>Sedes (Selección Múltiple)</label>
                         <div class="checkbox-grid">
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="Todas">
+                                Todas</label>
                             <label class="checkbox-option"><input type="checkbox" name="sede" value="AQP"> Arequipa
                                 (AQP)</label>
                             <label class="checkbox-option"><input type="checkbox" name="sede" value="PRC"> Surco
@@ -475,10 +558,30 @@
                             <label class="checkbox-option"><input type="checkbox" name="audience" value="Publico"
                                     class="audience-check"> Público en General</label>
                         </div>
+                        <div style="margin-top: 1rem;">
+                            <button type="button" id="btn-toggle-audience-detail" class="btn-secondary small"
+                                style="margin-bottom: 0.5rem; font-size: 0.8rem;"><i class="ph ph-plus"></i> Añadir
+                                detalle específico (Opcional)</button>
+                            <input type="text" id="audience-detail-input" class="input-modern small"
+                                placeholder="Ej: matriculados en 1er ciclo, que dictan Inteligencia Artificial..."
+                                style="display: none; width: 100%; margin-bottom: 0.5rem;">
+                        </div>
                         <div class="audience-summary-box">
-                            <small>Resumen de audiencia:</small>
+                            <small>Resumen de audiencia final:</small>
                             <p id="audience-summary-text" class="summary-text">-</p>
                         </div>
+                    </div>
+                    <!-- 7. Descripción Corta (Moved to end) -->
+                    <div class="form-group">
+                        <label for="event-descripcion"
+                            style="display: flex; justify-content: space-between; align-items: center;">
+                            Descripción breve (Opcional)
+                            <button type="button" id="btn-auto-desc" class="btn-secondary small"
+                                style="padding: 4px 8px; font-size: 0.75rem;"><i class="ph ph-magic-wand"></i>
+                                Auto-generar</button>
+                        </label>
+                        <textarea id="event-descripcion" class="input-modern area" style="height: 60px;"
+                            placeholder="Ej: Webinar a cargo de Juan Pérez. Modalidad: Virtual. Sede: No establecido."></textarea>
                     </div>
 
                     <div class="modal-footer">
@@ -499,12 +602,42 @@
                 <button class="close-modal"><i class="ph ph-x"></i></button>
             </div>
             <div class="modal-body">
-                <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.9rem;">Copia una <b>fila
-                        completa</b> (desde la columna Mes hasta el final) de tu archivo de Google Sheets y pégala aquí
-                    abajo con Ctrl+V. ¡El sistema procesará los datos automáticamente!</p>
+
+                <!-- Nueva Sincronización Automática -->
+                <div
+                    style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h4 style="color: #60a5fa; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 6px;">
+                        <i class="ph ph-link"></i> Sincronización Automática
+                    </h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">
+                        Pega el enlace público (URL) de tu archivo Google Sheets. El sistema descargará y procesará la
+                        hoja visible automáticamente. <b>Importante:</b> El archivo debe estar compartido como
+                        <i>Cualquier persona con el enlace (Lector)</i>.
+                    </p>
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+                        <input type="url" id="sheet-url-input" class="input-modern"
+                            placeholder="https://docs.google.com/spreadsheets/d/1Xy_..."
+                            style="margin-top: 0; flex: 1;">
+                        <button type="button" id="btn-sync-url" class="btn-primary" style="white-space: nowrap;"><i
+                                class="ph ph-cloud-arrow-down"></i> Extraer</button>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+                    <hr style="flex: 1; border-color: rgba(255,255,255,0.1);">
+                    <small style="color: var(--text-muted); font-weight: 500;">O importación tradicional</small>
+                    <hr style="flex: 1; border-color: rgba(255,255,255,0.1);">
+                </div>
+
+                <!-- Método Tradicional Fallback -->
+                <h4 style="margin-bottom: 0.5rem; color: var(--text-light);"><i class="ph ph-clipboard-text"></i> Pegado
+                    Manual</h4>
+                <p style="margin-bottom: 1rem; color: var(--text-muted); font-size: 0.85rem;">Copia una <b>fila
+                        completa</b> (desde la columna Mes hasta el final) de tu archivo y pégala aquí
+                    abajo con Ctrl+V.</p>
                 <textarea id="import-event-data" class="input-modern area"
-                    style="height: 120px; font-family: monospace; white-space: pre; overflow-x: auto; background: var(--bg-color);"
-                    placeholder="[Mes]	[Inicio]	[Fin]	[Hora]	[Actividad]	[Descripción breve]	[Vertical]	[Público objetivo]	[Modalidad]	[Sede / Ubicación]"></textarea>
+                    style="height: 100px; font-family: monospace; white-space: pre; overflow-x: auto; background: var(--bg-color);"
+                    placeholder="[Mes]	[Inicio]	[Fin]	[Hora]	[Actividad]..."></textarea>
 
                 <div id="import-preview" class="hidden"
                     style="margin-top: 1.5rem; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); padding: 1rem; border-radius: 8px;">

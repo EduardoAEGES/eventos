@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // 🔗 URL DEL WEBHOOK DE APPS SCRIPT PARA SINCRONIZAR A SHEETS
+    // Pega aquí la URL que te da Google al "Implementar como Aplicación Web"
+    const GOOGLE_APP_SCRIPT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzcuWg_eQmRMYfcilsm4b4TxlBw8YrP5p6U-UuewY6zQv7zS8ow2DZjO-ek2hYuvk4/exec";
+
     // ALERT DEBUG
     // ALERT DEBUG
     // alert('SISTEMA INICIADO: El script se ha cargado correctamente.');
@@ -63,10 +67,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Close on click outside
+    // Close on click outside (only if it's not the event creation modal)
     document.querySelectorAll('.modal-overlay').forEach(m => {
         m.addEventListener('click', (e) => {
-            if (e.target === m) {
+            if (e.target === m && m.id !== 'event-modal') {
                 m.classList.remove('active');
             }
         });
@@ -76,11 +80,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalityInputs = document.querySelectorAll('input[name="modality"]');
     const sedesContainer = document.getElementById('sedes-container');
 
+    // Mantenemos el contenedor de sede visible siempre a petición del usuario
+    if (sedesContainer) {
+        sedesContainer.classList.remove('hidden');
+    }
+
     modalityInputs.forEach(input => {
         input.addEventListener('change', (e) => {
-            if (e.target.value === 'Virtual') {
-                sedesContainer.classList.add('hidden');
-            } else {
+            // Ya no ocultamos nada
+            if (sedesContainer) {
                 sedesContainer.classList.remove('hidden');
             }
         });
@@ -144,16 +152,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const sorted = selectedCycles.map(c => cycleMap[c]).sort((a, b) => a - b);
 
             if (sorted.length === 1) {
-                // Single cycle
-                // Mapping back numeric to string is tricky if not careful, simpler to just list them
-                // But request asked for "quinto a mas" logic etc.
                 const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to a más' };
                 text = `Estudiantes de ${mapBack[sorted[0]]} ciclo`;
             } else if (sorted.length > 1) {
                 const min = sorted[0];
                 const max = sorted[sorted.length - 1];
 
-                // Check if it's a contiguous range
                 let isContiguous = true;
                 for (let i = 0; i < sorted.length - 1; i++) {
                     if (sorted[i + 1] !== sorted[i] + 1) isContiguous = false;
@@ -168,7 +172,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         text = `Estudiantes del ${mapBack[min]} al ${mapBack[max]} ciclo`;
                     }
                 } else {
-                    // Formatear ciclos no consecutivos: "Estudiantes del 1er y 5to ciclo"
                     const cycleNames = sorted.map(c => mapBack[c]);
                     if (cycleNames.length === 2) {
                         text = `Estudiantes del ${cycleNames[0]} y ${cycleNames[1]} ciclo`;
@@ -190,10 +193,19 @@ document.addEventListener('DOMContentLoaded', () => {
             text = 'Seleccione audiencia...';
         }
 
-        // Override if mixed logic gets too complex
         if (values.includes('Egresados')) {
             if (text !== 'Seleccione audiencia...') text += ', Egresados';
             else text = 'Egresados';
+        }
+
+        // Agregar detalle opcional si existe
+        const detailInput = document.getElementById('audience-detail-input');
+        if (detailInput && detailInput.value.trim() !== '') {
+            if (text !== 'Seleccione audiencia...') {
+                text += ' (' + detailInput.value.trim() + ')';
+            } else {
+                text = detailInput.value.trim();
+            }
         }
 
         summaryText.textContent = text;
@@ -202,6 +214,28 @@ document.addEventListener('DOMContentLoaded', () => {
     audienceCheckboxes.forEach(cb => {
         cb.addEventListener('change', updateAudienceSummary);
     });
+
+    // Eventos para el detalle opcional de audiencia
+    const btnToggleAudienceDetail = document.getElementById('btn-toggle-audience-detail');
+    const audienceDetailInput = document.getElementById('audience-detail-input');
+
+    if (btnToggleAudienceDetail && audienceDetailInput) {
+        btnToggleAudienceDetail.addEventListener('click', () => {
+            if (audienceDetailInput.style.display === 'none') {
+                audienceDetailInput.style.display = 'block';
+                audienceDetailInput.focus();
+                btnToggleAudienceDetail.innerHTML = '<i class="ph ph-minus"></i> Ocultar detalle';
+            } else {
+                audienceDetailInput.style.display = 'none';
+                audienceDetailInput.value = '';
+                btnToggleAudienceDetail.innerHTML = '<i class="ph ph-plus"></i> Añadir detalle específico (Opcional)';
+                updateAudienceSummary();
+            }
+        });
+
+        audienceDetailInput.addEventListener('input', updateAudienceSummary);
+    }
+
 
     // --- BACKEND INTEGRATION (SUPABASE) ---
     // Initialize Supabase Client
@@ -263,11 +297,16 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectPonente = document.getElementById('event-ponente');
             if (!selectPonente) return;
 
+            // Guardar valor actual para restaurar si es posible
+            const currentVal = selectPonente.value;
+
             // Limpiar y dejar Pendiente y Agregar
             selectPonente.innerHTML = `
                 <option value="Pendiente">Pendiente</option>
                 <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+ Agregar nuevo ponente...</option>
             `;
+
+            let foundCurrent = false;
 
             // Insertar opciones antes del botón de Agregar (es el último)
             ponentes.forEach(p => {
@@ -275,23 +314,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const option = document.createElement('option');
                 const fullName = `${p.apellidos ? p.apellidos + ',' : ''} ${p.nombres}`.trim();
-                option.value = fullName;
-                option.textContent = fullName + (p.tipo_docente === 'Docente CERTUS' ? ' (CERTUS)' : '');
+                const textVal = fullName;
+                option.value = textVal;
+                option.textContent = textVal + (p.tipo_docente === 'Docente CERTUS' ? ' (CERTUS)' : '');
+
+                if (textVal === currentVal) foundCurrent = true;
 
                 // Insertar justo antes del último
                 selectPonente.insertBefore(option, selectPonente.lastElementChild);
             });
+
+            if (foundCurrent) selectPonente.value = currentVal;
+            if (typeof toggleDeletePonenteBtn === 'function') toggleDeletePonenteBtn();
 
         } catch (e) {
             console.error("Error cargando ponentes:", e);
         }
     }
 
-    // Lógica para agregar Nuevo Ponente
+    // Lógica para agregar y Eliminar Ponente
     const selectPonente = document.getElementById('event-ponente');
+    const btnDeletePonente = document.getElementById('btn-delete-ponente');
     const newPonenteModal = document.getElementById('new-ponente-modal');
     const newPonenteForm = document.getElementById('new-ponente-form');
     let previousPonenteValue = 'Pendiente';
+
+    function toggleDeletePonenteBtn() {
+        if (!selectPonente || !btnDeletePonente) return;
+        const val = selectPonente.value;
+        if (val === 'Pendiente' || val === 'new_ponente' || !val) {
+            btnDeletePonente.style.display = 'none';
+        } else {
+            btnDeletePonente.style.display = 'block';
+        }
+    }
 
     if (selectPonente) {
         selectPonente.addEventListener('change', (e) => {
@@ -300,6 +356,56 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (newPonenteForm) newPonenteForm.reset();
             } else {
                 previousPonenteValue = e.target.value;
+            }
+            toggleDeletePonenteBtn();
+            if (typeof updateAutoDescription === 'function') updateAutoDescription();
+        });
+    }
+
+    if (btnDeletePonente) {
+        btnDeletePonente.addEventListener('click', async () => {
+            const ponenteName = selectPonente.value;
+            if (!ponenteName || ponenteName === 'Pendiente' || ponenteName === 'new_ponente') return;
+
+            const result = await Swal.fire({
+                title: '¿Eliminar Ponente?',
+                text: `¿Está seguro de eliminar al ponente "${ponenteName}"? Esta acción no se puede deshacer.`,
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#f87171',
+                cancelButtonColor: '#6b7280',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            });
+
+            if (result.isConfirmed) {
+                try {
+                    const { data: ponentes, error: fetchErr } = await supabase.from('ponentes').select('*');
+                    if (fetchErr) throw fetchErr;
+
+                    let targetId = null;
+                    for (let p of ponentes) {
+                        const fullName = `${p.apellidos ? p.apellidos + ',' : ''} ${p.nombres}`.trim();
+                        if (fullName === ponenteName) {
+                            targetId = p.id;
+                            break;
+                        }
+                    }
+
+                    if (targetId) {
+                        const { error: delErr } = await supabase.from('ponentes').delete().eq('id', targetId);
+                        if (delErr) throw delErr;
+                        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Ponente eliminado', showConfirmButton: false, timer: 2000 });
+                        selectPonente.value = 'Pendiente';
+                        await loadPonentes();
+                        if (typeof updateAutoDescription === 'function') updateAutoDescription();
+                    } else {
+                        Swal.fire('Error', 'No se encontró el ponente exacto en la base de datos.', 'error');
+                    }
+                } catch (err) {
+                    console.error("Error eliminando ponente:", err);
+                    Swal.fire('Error', 'No se pudo eliminar el ponente.', 'error');
+                }
             }
         });
     }
@@ -311,6 +417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const closePonenteModal = () => {
         newPonenteModal.classList.remove('active');
         selectPonente.value = previousPonenteValue; // Restaurar selección
+        toggleDeletePonenteBtn();
     };
 
     if (closeNewPonenteBtn) closeNewPonenteBtn.addEventListener('click', closePonenteModal);
@@ -350,6 +457,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Intentar seleccionar el recien creado (asegurarse de que existan los valores)
                 setTimeout(() => {
                     selectPonente.value = newNameCombo;
+                    toggleDeletePonenteBtn();
+                    if (typeof updateAutoDescription === 'function') updateAutoDescription();
                 }, 100);
 
             } catch (err) {
@@ -362,6 +471,50 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // --- LÓGICA DE DESCRIPCIÓN AUTOMÁTICA GENERADA NATIVAMENTE ---
+    const btnAutoDesc = document.getElementById('btn-auto-desc');
+    const eventDescInput = document.getElementById('event-descripcion');
+
+    if (btnAutoDesc && eventDescInput) {
+        btnAutoDesc.addEventListener('click', () => {
+            const eventTypeSelect = document.getElementById('event-type');
+            const eventNameInput = document.getElementById('event-name');
+            const selectPonente = document.getElementById('event-ponente');
+
+            const tipo = eventTypeSelect ? eventTypeSelect.value : '';
+            const nombre = eventNameInput ? eventNameInput.value.trim() : '';
+            const ponente = selectPonente ? selectPonente.value : '';
+
+            const audienciaChecks = Array.from(document.querySelectorAll('input[name="audience"]:checked')).map(cb => cb.value).join(', ');
+            const textAud = document.getElementById('audience-detail-input') ? document.getElementById('audience-detail-input').value.trim() : '';
+            let audiencia = (audienciaChecks && textAud) ? `${audienciaChecks} (${textAud})` : (textAud || audienciaChecks);
+
+            // Sedes & Modalidad
+            const modChecked = document.querySelector('input[name="modality"]:checked');
+            const modalidad = modChecked ? modChecked.value : 'No establecido';
+
+            const sedesArr = Array.from(document.querySelectorAll('input[name="sede"]:checked')).map(cb => cb.value);
+            let sedeStr = sedesArr.length > 0 ? sedesArr.join(', ') : 'No establecido';
+
+            if (!tipo || !nombre) {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'warning', title: 'Complete Tipo y Nombre primero', showConfirmButton: false, timer: 3000 });
+                return;
+            }
+
+            const ponenteClean = (ponente && ponente !== 'Pendiente' && ponente !== 'new_ponente') ? ponente.replace(' (CERTUS)', '') : 'Docente por Asignar';
+            const audClean = audiencia ? audiencia : 'Público en general';
+            const temaTitle = nombre.toLowerCase().replace(tipo.toLowerCase(), '').trim() || nombre;
+
+            const finalDesc = `${tipo} a cargo del ponente ${ponenteClean}, dirigido a ${audClean}. En este espacio se desarrollará el tema: ${temaTitle}. Modalidad: ${modalidad}. Sede: ${sedeStr}.`;
+            eventDescInput.value = finalDesc;
+
+            // Disparar evento input para autoguardar
+            eventDescInput.dispatchEvent(new Event('input'));
+
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Descripción generada', showConfirmButton: false, timer: 2000 });
+        });
+    }
+
     // Exponer globalmente y cargar al inicio
     window.loadEvents = loadEvents;
     loadEvents();
@@ -370,13 +523,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyFilters() {
         const searchInput = document.getElementById('search-filter');
         const statusSelect = document.getElementById('status-filter');
+        const monthSelect = document.getElementById('month-filter');
+        const visibilitySelect = document.getElementById('visibility-filter');
+
         const searchTerm = searchInput ? searchInput.value.toLowerCase() : '';
         const statusVal = statusSelect ? statusSelect.value : 'all';
+        const monthVal = monthSelect ? monthSelect.value : 'all';
+        const visibilityVal = visibilitySelect ? visibilitySelect.value : 'all';
 
         const filtered = allEventsData.filter(ev => {
             const matchesSearch = ev.nombre.toLowerCase().includes(searchTerm) ||
                 ev.tipo.toLowerCase().includes(searchTerm) ||
-                ev.modalidad.toLowerCase().includes(searchTerm);
+                ev.modalidad.toLowerCase().includes(searchTerm) ||
+                (ev.ponente && ev.ponente.toLowerCase().includes(searchTerm));
             if (!matchesSearch) return false;
 
             if (statusVal !== 'all') {
@@ -387,6 +546,29 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (ev.status.toString() !== statusVal) return false;
                 }
             }
+
+            // Month filter
+            if (monthVal !== 'all') {
+                let eventMonth = -1;
+                try {
+                    const horarios = JSON.parse(ev.horario || '[]');
+                    if (horarios.length > 0 && horarios[0].fecha) {
+                        const parts = horarios[0].fecha.split('-');
+                        if (parts.length === 3) {
+                            eventMonth = parseInt(parts[1], 10);
+                        }
+                    }
+                } catch (e) { }
+                if (eventMonth.toString() !== monthVal) return false;
+            }
+
+            // Visibility filter
+            if (visibilityVal !== 'all') {
+                const isPub = !!ev.is_public;
+                if (visibilityVal === 'publico' && !isPub) return false;
+                if (visibilityVal === 'privado' && isPub) return false;
+            }
+
             return true;
         });
 
@@ -395,8 +577,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const searchInputEl = document.getElementById('search-filter');
     const statusSelectEl = document.getElementById('status-filter');
+    const monthSelectEl = document.getElementById('month-filter');
+    const visibilitySelectEl = document.getElementById('visibility-filter');
+
     if (searchInputEl) searchInputEl.addEventListener('input', applyFilters);
     if (statusSelectEl) statusSelectEl.addEventListener('change', applyFilters);
+    if (monthSelectEl) monthSelectEl.addEventListener('change', applyFilters);
+    if (visibilitySelectEl) visibilitySelectEl.addEventListener('change', applyFilters);
 
     // Function to render events
     function renderEvents(events) {
@@ -464,11 +651,38 @@ document.addEventListener('DOMContentLoaded', () => {
     // Global variable to keep track of current dashboard month
     let currentDashboardDate = new Date(); // Start at current month
 
-    // Function to render Dashboard Calendar
     function renderDashboardCalendar(events) {
         const grid = document.getElementById('monthly-calendar-grid');
         const monthLabel = document.getElementById('current-month-label');
         if (!grid || !monthLabel) return;
+
+        // Apply Calendar Filters
+        const calendarVisFilter = document.getElementById('calendar-visibility-filter');
+        const calendarSedeFilter = document.getElementById('calendar-sede-filter');
+        const visFilterVal = calendarVisFilter ? calendarVisFilter.value : 'all';
+        const sedeFilterVal = calendarSedeFilter ? calendarSedeFilter.value : 'all';
+
+        const filteredEvents = events.filter(ev => {
+            if (visFilterVal !== 'all') {
+                const isPub = !!ev.is_public;
+                if (visFilterVal === 'publico' && !isPub) return false;
+                if (visFilterVal === 'privado' && isPub) return false;
+            }
+            if (sedeFilterVal !== 'all') {
+                if (!ev.sedes || (!ev.sedes.includes(sedeFilterVal) && !ev.sedes.includes('Todas'))) return false;
+            }
+            return true;
+        });
+
+        // Add filter listeners if not present
+        if (calendarVisFilter && !calendarVisFilter.hasAttribute('data-listener')) {
+            calendarVisFilter.addEventListener('change', () => renderDashboardCalendar(events));
+            calendarVisFilter.setAttribute('data-listener', 'true');
+        }
+        if (calendarSedeFilter && !calendarSedeFilter.hasAttribute('data-listener')) {
+            calendarSedeFilter.addEventListener('change', () => renderDashboardCalendar(events));
+            calendarSedeFilter.setAttribute('data-listener', 'true');
+        }
 
         // Configuration
         const year = currentDashboardDate.getFullYear();
@@ -541,7 +755,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Sort events chronologically to render them properly
         const flatEvents = [];
-        events.forEach(ev => {
+        filteredEvents.forEach(ev => {
             if (ev.estado_especial === 'Cancelado') return;
             let horarios = [];
             try { horarios = JSON.parse(ev.horario); } catch (e) { }
@@ -566,11 +780,25 @@ document.addEventListener('DOMContentLoaded', () => {
             if (cellsMap.has(h.fecha)) {
                 const block = document.createElement('div');
 
-                // Styling
+                // Styling based on is_public and modalidad
                 let bg = '#1e293b';
                 let bd = '#334155';
                 let tc = '#f8fafc';
                 let borderLeftColor = '#3b82f6';
+
+                const isPublic = !!ev.is_public;
+                const mod = (ev.modalidad || '').toLowerCase();
+
+                if (mod.includes('virtual')) {
+                    if (isPublic) { bg = '#047857'; bd = '#065f46'; tc = '#ffffff'; }
+                    else { bg = '#dcfce3'; bd = '#bbf7d0'; tc = '#064e3b'; }
+                } else if (mod.includes('presencial')) {
+                    if (isPublic) { bg = '#c2410c'; bd = '#9a3412'; tc = '#ffffff'; }
+                    else { bg = '#ffedd5'; bd = '#fed7aa'; tc = '#7c2d12'; }
+                } else if (mod.includes('hibrido') || mod.includes('híbrido') || mod.includes('ambas')) {
+                    if (isPublic) { bg = '#7e22ce'; bd = '#6b21a8'; tc = '#ffffff'; }
+                    else { bg = '#f3e8ff'; bd = '#e9d5ff'; tc = '#581c87'; }
+                }
 
                 const lowerNombre = (ev.nombre + " " + ev.tipo).toLowerCase();
 
@@ -600,15 +828,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 block.style.lineHeight = '1.4';
                 block.style.borderRadius = '6px';
                 block.style.cursor = 'pointer';
-                block.style.transition = 'transform 0.1s, background 0.1s';
+                block.style.transition = 'transform 0.1s, box-shadow 0.1s';
                 block.style.overflow = 'hidden';
                 block.style.display = 'flex';
                 block.style.flexDirection = 'column';
                 block.style.gap = '4px';
 
-                block.onmouseenter = () => { block.style.background = '#334155'; block.style.transform = 'scale(1.02)'; };
-                block.onmouseleave = () => { block.style.background = bg; block.style.transform = 'scale(1)'; };
-                block.onclick = () => window.showDashboardEventDetails(ev);
+                block.onmouseenter = () => { block.style.boxShadow = '0 4px 6px -1px rgba(0,0,0,0.1)'; block.style.transform = 'scale(1.02)'; };
+                block.onmouseleave = () => { block.style.boxShadow = 'none'; block.style.transform = 'scale(1)'; };
+                block.onclick = () => {
+                    playClickSound();
+                    window.showDashboardEventDetails(ev);
+                };
 
                 const ponenteText = ev.ponente && ev.ponente.toLowerCase() !== 'pendiente' ? ev.ponente : 'Docente por Asignar';
 
@@ -676,6 +907,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return cell;
     }
 
+    // Sound Effect Utility
+    function playClickSound() {
+        try {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContext) return;
+            const ctx = new AudioContext();
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(800, ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.1);
+            gainNode.gain.setValueAtTime(0.05, ctx.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            osc.start();
+            osc.stop(ctx.currentTime + 0.1);
+        } catch (e) { console.error("Could not play sound", e); }
+    }
+
     // Modal popup for seeing dashboard event details
     window.showDashboardEventDetails = function (eventData) {
         if (!eventData) return;
@@ -726,7 +977,7 @@ document.addEventListener('DOMContentLoaded', () => {
             horariosHtml = '<div style="margin-left: 0.5rem; color: #64748b;">No especificado</div>';
         }
 
-        let sedeStr = eventData.sede || eventData.lugar || 'Vía Zoom / Teams (o Virtual)';
+        let sedeStr = eventData.sedes || eventData.lugar || 'Vía Zoom / Teams (o Virtual)';
 
         let htmlContent = `
             <div style="text-align: left; padding: 0.5rem; font-size: 0.95rem; color: #64748b; line-height: 1.6;">
@@ -745,8 +996,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     <strong style="display:block; margin-bottom: 4px;">Descripción:</strong> 
                     <span style="color: #334155; font-size:0.9rem;">${eventData.descripcion_evento || 'Sin descripción'}</span>
                 </p>
-                <p style="margin-bottom: 0.7rem;"><strong>Modalidad / Público:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
-                <p style="margin-bottom: 0.7rem;"><strong>Modalidad / Público:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
+                <p style="margin-bottom: 0.7rem;"><strong>Modalidad:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
+                <p style="margin-bottom: 0.7rem;"><strong>Público Objetivo:</strong> <span style="color: #1e293b;">${eventData.audiencia || 'No especificado'}</span></p>
                 <p><strong>Estado Actual:</strong> <span style="display:inline-block; margin-left: 0.5rem; padding: 0.2rem 0.6rem; background: ${statusColor}22; color: ${statusColor}; border-radius: 4px; font-weight: bold;">${statusBadgeLabel}</span></p>
             <div class="detail-label"><i class="ph ph-hash"></i> ID Sincronización</div>
             <div class="detail-value" style="font-family: monospace; font-size:0.8rem; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius:4px;">${eventData.sheet_id || 'Generado Localmente / No Sincronizado'}</div>
@@ -821,11 +1072,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (error) throw error;
 
-            // Si data está vacío, es probable un bloqueo por reglas de base de datos (RLS)
             if (data && data.length === 0) {
                 Swal.fire('Atención', 'El evento no se pudo eliminar. Parece que Supabase RLS (Row Level Security) está bloqueando la acción de eliminación (DELETE).', 'warning');
             } else {
                 Swal.fire('Eliminado', 'Evento eliminado correctamente.', 'success');
+                // Get the sheet_id to send down
+                const originalEvent = allEventsData.find(e => String(e.id) === String(eventId));
+                if (originalEvent) {
+                    await syncToGoogleSheets("eliminar_evento", {
+                        sheet_id: originalEvent.sheet_id,
+                        nombre: originalEvent.nombre
+                    });
+                }
             }
             loadEvents();
         } catch (error) {
@@ -859,8 +1117,18 @@ document.addEventListener('DOMContentLoaded', () => {
             selectPonente.value = 'Pendiente';
         }
 
-        document.getElementById('event-responsable').value = eventData.responsable || '';
+        // Responsables (Múltiple Checkboxes)
+        document.querySelectorAll('input[name="responsable"]').forEach(cb => cb.checked = false);
+        if (eventData.responsable) {
+            const respArr = eventData.responsable.split(',').map(s => s.trim());
+            document.querySelectorAll('input[name="responsable"]').forEach(cb => {
+                cb.checked = respArr.includes(cb.value);
+            });
+        }
         document.getElementById('event-descripcion').value = eventData.descripcion_evento || '';
+
+        // Is Public Checkbox
+        document.getElementById('event-is-public').checked = !!eventData.is_public;
 
         // Modality
         document.querySelector(`input[name="modality"][value="${eventData.modalidad}"]`).checked = true;
@@ -888,15 +1156,77 @@ document.addEventListener('DOMContentLoaded', () => {
             createScheduleRow();
         }
 
-        // Audience (complex parsing because it's stored as "Text (VAL1, VAL2)")
-        document.querySelectorAll('.audience-check').forEach(cb => cb.checked = false);
-        const match = eventData.audiencia ? eventData.audiencia.match(/\((.*?)\)/) : null;
-        if (match && match[1]) {
-            const checks = match[1].split(',').map(s => s.trim());
-            document.querySelectorAll('.audience-check').forEach(cb => {
-                if (checks.includes(cb.value)) cb.checked = true;
-            });
+        // Audience Reverse Parsing
+        let cleanAud = eventData.audiencia || '';
+
+        // Remove outer parenthesis if they exist (new format)
+        if (cleanAud.startsWith('(') && cleanAud.endsWith(')')) {
+            cleanAud = cleanAud.substring(1, cleanAud.length - 1).trim();
         }
+
+        const detailInput = document.getElementById('audience-detail-input');
+        const btnToggleAudienceDetail = document.getElementById('btn-toggle-audience-detail');
+
+        let audBase = cleanAud;
+        let detailText = '';
+
+        // Match detail which is the inner parenthesis at the end of the text
+        const detailMatch = cleanAud.match(/\(([^)]+)\)$/);
+        if (detailMatch && detailMatch[1]) {
+            detailText = detailMatch[1].trim();
+            audBase = cleanAud.replace(/\([^)]+\)$/, '').trim();
+        }
+
+        if (detailText) {
+            if (detailInput) {
+                detailInput.value = detailText;
+                detailInput.style.display = 'block';
+            }
+            if (btnToggleAudienceDetail) btnToggleAudienceDetail.innerHTML = '<i class="ph ph-minus"></i> Ocultar detalle';
+        } else {
+            if (detailInput) {
+                detailInput.value = '';
+                detailInput.style.display = 'none';
+            }
+            if (btnToggleAudienceDetail) btnToggleAudienceDetail.innerHTML = '<i class="ph ph-plus"></i> Añadir detalle específico (Opcional)';
+        }
+
+        const checksToSet = new Set();
+
+        if (audBase.includes('Egresados')) checksToSet.add('Egresados');
+        if (audBase.includes('Docentes') || audBase.includes('Comunidad académica')) checksToSet.add('Docentes');
+        if (audBase.includes('Público en General') || audBase.includes('Público')) checksToSet.add('Publico');
+
+        const allCycles = ['1', '2', '3', '4', '5', '6+'];
+        if (audBase.includes('Todos los estudiantes') || audBase.includes('Comunidad académica')) {
+            allCycles.forEach(c => checksToSet.add(c));
+        } else {
+            if (audBase.includes('1er')) checksToSet.add('1');
+            if (audBase.includes('2do')) checksToSet.add('2');
+            if (audBase.includes('3er')) checksToSet.add('3');
+            if (audBase.includes('4to')) checksToSet.add('4');
+            if (audBase.includes('5to')) checksToSet.add('5');
+            if (audBase.includes('6to')) checksToSet.add('6+');
+
+            const mapWordToNum = { '1er': 1, '2do': 2, '3er': 3, '4to': 4, '5to': 5 };
+            const rangeMatch = audBase.match(/del (1er|2do|3er|4to|5to) al (2do|3er|4to|5to|6to)/);
+            if (rangeMatch) {
+                const start = mapWordToNum[rangeMatch[1]];
+                let end = rangeMatch[2] === '6to' ? 6 : mapWordToNum[rangeMatch[2]];
+                for (let i = start; i <= end; i++) checksToSet.add(i === 6 ? '6+' : String(i));
+            }
+
+            const aMasMatch = audBase.match(/de (1er|2do|3er|4to|5to|6to) a más/);
+            if (aMasMatch) {
+                const start = aMasMatch[1] === '6to' ? 6 : mapWordToNum[aMasMatch[1]];
+                for (let i = start; i <= 6; i++) checksToSet.add(i === 6 ? '6+' : String(i));
+            }
+        }
+
+        document.querySelectorAll('.audience-check').forEach(cb => {
+            cb.checked = checksToSet.has(cb.value);
+        });
+
         updateAudienceSummary();
 
         // Show modal
@@ -928,19 +1258,145 @@ document.addEventListener('DOMContentLoaded', () => {
         addScheduleBtn.addEventListener('click', () => createScheduleRow());
     }
 
+    // --- Auto-Save Draft Logic ---
+    function saveDraft() {
+        if (currentEditEventId) return; // No auto-save in edit mode
+        const draft = {
+            tipo: document.getElementById('event-type').value,
+            nombre: document.getElementById('event-name').value,
+            ponente: document.getElementById('event-ponente').value,
+            descripcion_evento: document.getElementById('event-descripcion').value,
+            modalidad: document.querySelector('input[name="modality"]:checked')?.value || 'Presencial',
+            is_public: document.getElementById('event-is-public').checked,
+            sede: Array.from(document.querySelectorAll('input[name="sede"]:checked')).map(cb => cb.value),
+            responsable: Array.from(document.querySelectorAll('input[name="responsable"]:checked')).map(cb => cb.value),
+            audience_text: document.getElementById('audience-detail-input') ? document.getElementById('audience-detail-input').value : '',
+            audience: Array.from(document.querySelectorAll('input[name="audience"]:checked')).map(cb => cb.value)
+        };
+        const scheduleRows = document.querySelectorAll('.schedule-row');
+        draft.horario = Array.from(scheduleRows).map(row => {
+            const inputs = row.querySelectorAll('input');
+            return { fecha: inputs[0]?.value || '', inicio: inputs[1]?.value || '', fin: inputs[2]?.value || '' };
+        });
+        localStorage.setItem('draft_event_form', JSON.stringify(draft));
+    }
+
+    eventForm.addEventListener('change', saveDraft);
+    eventForm.addEventListener('input', saveDraft);
+
+    function loadDraft() {
+        if (currentEditEventId) return false;
+        const raw = localStorage.getItem('draft_event_form');
+        if (!raw) return false;
+        try {
+            const draft = JSON.parse(raw);
+            if (!draft.nombre && !draft.tipo && (!draft.horario || draft.horario.length === 0)) return false;
+
+            document.getElementById('event-type').value = draft.tipo || 'Webinar';
+            document.getElementById('event-name').value = draft.nombre || '';
+            document.getElementById('event-descripcion').value = draft.descripcion_evento || '';
+
+            const selectPonente = document.getElementById('event-ponente');
+            let ponenteFound = false;
+            Array.from(selectPonente.options).forEach(opt => {
+                if (opt.value === draft.ponente) ponenteFound = true;
+            });
+            selectPonente.value = ponenteFound ? draft.ponente : 'Pendiente';
+            if (typeof toggleDeletePonenteBtn === 'function') toggleDeletePonenteBtn();
+
+            document.getElementById('event-is-public').checked = !!draft.is_public;
+
+            if (draft.modalidad) {
+                const modInput = document.querySelector(`input[name="modality"][value="${draft.modalidad}"]`);
+                if (modInput) {
+                    modInput.checked = true;
+                    modInput.dispatchEvent(new Event('change'));
+                }
+            }
+
+            document.querySelectorAll('input[name="sede"]').forEach(cb => cb.checked = false);
+            if (draft.sede) {
+                document.querySelectorAll('input[name="sede"]').forEach(cb => {
+                    if (draft.sede.includes(cb.value)) cb.checked = true;
+                });
+            }
+
+            document.querySelectorAll('input[name="responsable"]').forEach(cb => cb.checked = false);
+            if (draft.responsable) {
+                document.querySelectorAll('input[name="responsable"]').forEach(cb => {
+                    if (draft.responsable.includes(cb.value)) cb.checked = true;
+                });
+            }
+
+            document.querySelectorAll('input[name="audience"]').forEach(cb => cb.checked = false);
+            if (draft.audience) {
+                document.querySelectorAll('input[name="audience"]').forEach(cb => {
+                    if (draft.audience.includes(cb.value)) cb.checked = true;
+                });
+            }
+
+            const autodetails = document.getElementById('audience-detail-input');
+            if (autodetails) autodetails.value = draft.audience_text || '';
+
+            if (draft.horario && draft.horario.length) {
+                scheduleList.innerHTML = '';
+                draft.horario.forEach(h => createScheduleRow(h.fecha, h.inicio, h.fin));
+            } else {
+                scheduleList.innerHTML = '';
+                createScheduleRow();
+            }
+            if (typeof updateAudienceSummary === 'function') updateAudienceSummary();
+            return true;
+        } catch (e) { return false; }
+    }
+
     // --- Create Event Button Reset Logic ---
     if (openModalBtn) {
         openModalBtn.addEventListener('click', () => {
             currentEditEventId = null;
             document.querySelector('#event-modal h2').innerHTML = '<i class="ph ph-calendar-plus"></i> Crear Nuevo Evento';
             document.querySelector('#event-form button[type="submit"]').textContent = 'Guardar Evento';
-            eventForm.reset();
-            scheduleList.innerHTML = '';
-            createScheduleRow();
-            updateAudienceSummary();
+
+            // Try to load draft first
+            if (!loadDraft()) {
+                eventForm.reset();
+                scheduleList.innerHTML = '';
+                createScheduleRow();
+                if (typeof updateAudienceSummary === 'function') updateAudienceSummary();
+            }
             modal.classList.add('active');
         });
     }
+
+    // Listeners for Cancelling Modal
+    document.querySelectorAll('.close-modal').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            // Only relevant if this is the generic cancel button in the event form
+            if (e.target.closest('#event-form') && !currentEditEventId) {
+                const draft = localStorage.getItem('draft_event_form');
+                if (draft && draft.length > 10) {
+                    Swal.fire({
+                        title: '¿Descartar borrador?',
+                        text: "Tienes datos sin guardar. Si cancelas se perderá el progreso.",
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonText: 'Sí, descartar',
+                        cancelButtonText: 'No, mantener'
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            localStorage.removeItem('draft_event_form');
+                            const m = e.target.closest('.modal-overlay');
+                            if (m) m.classList.remove('active');
+                        }
+                    });
+                    // Stop the generic close from happening immediately, handled by SwitAlert
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            }
+        });
+    });
 
     function getStatusText(status) {
         const statuses = {
@@ -981,22 +1437,41 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         });
 
+        // Formateo Nativo antes de mandar a Supabase (Web App como Single Source of Truth)
+        let audText = document.getElementById('audience-summary-text').textContent || '';
+        if (audText === '-') {
+            audText = '';
+        }
+
+        // Remove description fallback: if blank, stay blank.
+        let descText = document.getElementById('event-descripcion').value.trim();
+
         // Build Data Payload
         const data = {
             tipo: document.getElementById('event-type').value,
             nombre: document.getElementById('event-name').value,
             ponente: document.getElementById('event-ponente').value.trim() || 'Pendiente',
-            responsable: document.getElementById('event-responsable').value.trim(),
-            descripcion_evento: document.getElementById('event-descripcion').value.trim(),
+            responsable: Array.from(document.querySelectorAll('input[name="responsable"]:checked')).map(cb => cb.value).join(', '),
+            descripcion_evento: descText,
+            is_public: document.getElementById('event-is-public').checked,
             modalidad: document.querySelector('input[name="modality"]:checked').value,
             sedes: sedes,
             horario: JSON.stringify(schedule),
-            audiencia: document.getElementById('audience-summary-text').textContent + ' (' + audienciaChecks + ')'
+            audiencia: audText
         };
 
         if (!currentEditEventId) {
             data.status = 0; // Default start status only for new events
-        } try {
+
+            // Generate sheet_id BEFORE inserting into Supabase to prevent duplicate row bugs
+            const mesi = new Date().getMonth();
+            const mesesA = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+            const rowNumber = (window.allEventsData ? window.allEventsData.length : 0) + 2;
+            const rnd = Math.random().toString(36).substr(2, 3).toUpperCase();
+            data.sheet_id = `${rowNumber}${mesesA[mesi]}-${rnd}`;
+        }
+
+        try {
             if (currentEditEventId) {
                 // UPDATE EXISTING EVENT
                 const { error: updateError } = await supabase
@@ -1005,6 +1480,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     .eq('id', currentEditEventId);
 
                 if (updateError) throw updateError;
+
+                // Get the old sheet_id to send down
+                const originalEvent = allEventsData.find(e => e.id === currentEditEventId);
+                data.sheet_id = originalEvent ? originalEvent.sheet_id : null;
+                await syncToGoogleSheets("actualizar_evento", data);
                 Swal.fire({
                     toast: true,
                     position: 'top-end',
@@ -1022,113 +1502,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (insertError) throw insertError;
 
+                // Sync as Action: crear_evento
+                await syncToGoogleSheets("crear_evento", data);
+
                 // ¡EVENTO CREADO EXITOSAMENTE EN BD LOCAL!
-                // GENERACIÓN DE TEXTO PARA GOOGLE SHEETS PARA COPIADO DIRECTO
+                try { localStorage.removeItem('draft_event_form'); } catch (e) { }
+
                 try {
-                    const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
-                    let iniObj = new Date();
-                    let finObj = new Date();
-                    let fechaInicioStr = '';
-                    let fechaFinStr = '';
-                    let primeraHora = '';
-                    let mesNombre = '';
-
-                    if (schedule && schedule.length > 0) {
-                        const partesIni = schedule[0].fecha.split('-');
-                        if (partesIni.length === 3) {
-                            iniObj = new Date(partesIni[0], partesIni[1] - 1, partesIni[2]);
-                            fechaInicioStr = `${partesIni[2]}/${partesIni[1]}/${partesIni[0]}`;
-                        }
-
-                        const partesFin = schedule[schedule.length - 1].fecha.split('-');
-                        if (partesFin.length === 3) {
-                            finObj = new Date(partesFin[0], partesFin[1] - 1, partesFin[2]);
-                            fechaFinStr = `${partesFin[2]}/${partesFin[1]}/${partesFin[0]}`;
-                        }
-
-                        mesNombre = meses[iniObj.getMonth()] || '';
-
-                        // Formatear hora (Ej: 17:30 -> 5:30 p. m.)
-                        if (schedule[0].inicio) {
-                            const [hh, mm] = schedule[0].inicio.split(':');
-                            let mH = parseInt(hh, 10);
-                            let ampm = mH >= 12 ? 'p. m.' : 'a. m.';
-                            mH = mH % 12;
-                            if (mH === 0) mH = 12;
-                            primeraHora = `${mH}:${mm} ${ampm}`;
-                        }
-                    }
-
-                    // Determinar Sede o Todas
-                    let finalSede = data.sedes ? data.sedes : 'Todas';
-                    if (data.modalidad === 'Virtual') finalSede = 'Todas';
-
-                    // Generador algorítmico de ID basado en la fecha o aleatorio simple si la DB no nos devuelve ID en el insert standard
-                    const letraMes = mesNombre.substring(0, 3).toUpperCase();
-                    const letraTipo = data.tipo.substring(0, 1).toUpperCase();
-                    const dayPrefix = iniObj.getDate() || Math.floor(Math.random() * 100);
-                    const suggestedSheetId = `${dayPrefix}${letraMes}-${letraTipo}`;
-
-                    // Asignamos el ID sugerido al evento web insertado de forma limpia
-                    try {
-                        const insertedRecordId = rawEvents ? rawEvents[0]?.id : null;
-                        // Como el insert standard puede no retornar el objeto, nos apoyamos de la UI pero intentamos forzar el update del nuevo evento.
-                    } catch (e) { }
-
-                    const gSheetsDataFormated = [
-                        mesNombre,
-                        fechaInicioStr,
-                        fechaFinStr,
-                        primeraHora,
-                        data.tipo, // Col 4: Tipo (lo usamos como Título base en la exportación si es Taller/Curso o pegamos el nombre)
-                        data.nombre, // Col 5: Actividad
-                        (data.descripcion_evento || '').trim(), // Col 6: Descripcion
-                        data.ponente && data.ponente !== 'Pendiente' ? data.ponente : '', // Col 7: Ponente ? a Vertical (En su Excel 'Finanzas' está en col 7 a 9 despues de descripcion)
-                        'Finanzas', // Vertical asumiendo siempre
-                        document.getElementById('audience-summary-text').textContent || '', // Publico Obj
-                        '', // Publico Obj Detalle
-                        data.modalidad, // Modalidad
-                        finalSede, // Sede
-                        data.responsable || '', // Resp local
-                        '0/7 En proyecto', // Estado local
-                        suggestedSheetId // ID
-                    ].join('\t');
-
-                    setTimeout(() => {
-                        Swal.fire({
-                            title: '¡Evento Creado!',
-                            html: `
-                                <div style="text-align: left; font-size: 0.95rem; line-height: 1.5; color: #cbd5e1;">
-                                    <p>El evento fue guardado en el Dashboard web.</p>
-                                    <p style="margin-top: 10px;">Para guardar el registro en <b>Google Sheets</b> alineado a tus columnas, haz clic en <b>Copiar Registro</b> y pégalo (Ctrl+V) en tu Excel online (desde la celda de MES).</p>
-                                    <textarea readonly id="sheet-export-data" style="width: 100%; height: 80px; margin-top: 15px; font-family: monospace; font-size: 0.8rem; padding: 10px; border-radius: 6px; border: 1px solid #3b82f6; resize: none; background: #0f172a; color:#f8fafc;" class="input-modern">${gSheetsDataFormated}</textarea>
-                                </div>
-                            `,
-                            icon: 'success',
-                            showCancelButton: true,
-                            confirmButtonText: '<i class="ph ph-copy"></i> Copiar Registro',
-                            cancelButtonText: 'Cerrar',
-                            confirmButtonColor: '#3b82f6',
-                            cancelButtonColor: '#64748b'
-                        }).then((result) => {
-                            if (result.isConfirmed) {
-                                navigator.clipboard.writeText(gSheetsDataFormated).then(() => {
-                                    Swal.fire({
-                                        toast: true,
-                                        position: 'top-end',
-                                        icon: 'success',
-                                        title: '¡Copiado! Ahora pégalo en Google Sheets',
-                                        showConfirmButton: false,
-                                        timer: 3000
-                                    });
-                                });
-                            }
-                        });
-                    }, 500);
-
+                    // Removed old webhook code because it's now handled by syncToGoogleSheets 
+                    // which is called above after inserting/updating.
                 } catch (e) {
-                    console.error("Error generando texto para Google Sheets:", e);
-                    Swal.fire('¡Éxito!', 'Evento guardado exitosamente.', 'success');
+                    console.error("Error procesando autoguardado a sheets:", e);
+                    Swal.fire('¡Éxito!', 'Evento guardado exitosamente en BD local (Error en sync a Sheets).', 'success');
                 }
             }
 
@@ -1154,8 +1539,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Definition of the 7-step flow
     const STATUS_FLOW = [
-        { id: 0, label: 'En proyecto', req: 'Se inicia el plan de trabajo.' },
-        { id: 1, label: 'Planificado', req: 'Se debe crear plan de ejecución / coordinar con ponente / Requerir foto' },
+        {
+            id: 0,
+            label: 'En proyecto',
+            req: [
+                { id: 'comunicado_eq', label: '¿Se ha comunicado al equipo sobre el evento?' },
+                { id: 'aprobado_eq', label: '¿Lo han aprobado?' }
+            ]
+        },
+        {
+            id: 1,
+            label: 'Planificado',
+            req: [
+                { id: 'carpeta_evento', label: '¿Desea crear la carpeta del evento?', type: 'action_drive' },
+                { id: 'coordinado_ponente', label: '¿Ha coordinado con el ponente?' },
+                { id: 'aceptado_ponente', label: '¿Ha aceptado el ponente?' }
+            ]
+        },
         { id: 2, label: 'Formalizado', req: 'Se debe crear formulario propio para registro, comunicar elaboración material o temario' },
         { id: 3, label: 'Comunicado', req: 'Se debe llenar el formulario de Marca y enviar por correo', actionUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSew6aEIbaWAaYvjXYYY0gxqmAH0g6377nuOEx1Bx5su1j_M_A/viewform', actionLabel: 'Ir al Formulario' },
         { id: 4, label: 'Difundido', req: 'Se debe difundir a través de redes sociales / Whatsapp (Marca también debe hacerlo)' },
@@ -1211,7 +1611,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Generate Requirements for NEXT step
         reqList.innerHTML = '';
-        btnAdvance.disabled = true; // Disabled by default until checks passed
+        btnAdvance.disabled = false; // Siempre activo para mostrar advertencia
+        let isStepCompletable = false;
 
         if (nextStep <= 7) {
             const stepConfig = STATUS_FLOW.find(s => s.id === currentStep); // Requirements to *leave* current or *enter* next? Assuming requirements to complete current -> next.
@@ -1222,37 +1623,361 @@ document.addEventListener('DOMContentLoaded', () => {
             const configForCurrent = STATUS_FLOW.find(s => s.id === currentStep);
 
             if (configForCurrent) {
-                const li = document.createElement('li');
-                li.className = 'req-item';
+                if (Array.isArray(configForCurrent.req)) {
+                    // --- NUEVA LÓGICA: Preguntas Personalizadas Sí/No (JSONB Persistente) ---
+                    let reqData = {};
+                    try {
+                        reqData = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
+                    } catch (e) { }
 
-                // Checkbox logic
-                let checkHtml = `<input type="checkbox" class="req-check" id="req-check-main">`;
-                let labelHtml = `<label for="req-check-main" class="req-label">${configForCurrent.req}</label>`;
-                let actionHtml = '';
+                    const evaluateAdvanceButton = () => {
+                        let ok = true;
+                        configForCurrent.req.forEach(r => {
+                            if (reqData[r.id] !== true) ok = false;
+                        });
 
-                // Specific Logic Step 3 (Form Link)
-                if (currentStep === 3) {
-                    actionHtml = `<a href="${configForCurrent.actionUrl}" target="_blank" class="req-link-btn">${configForCurrent.actionLabel} <i class="ph ph-arrow-square-out"></i></a>`;
+                        // Extra validation for Step 1 (Planificado): Require 'Ponente'
+                        if (currentStep === 1) {
+                            if (!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') {
+                                ok = false;
+                            }
+                        }
+
+                        isStepCompletable = ok;
+                    };
+
+                    const updateReqsInDB = async (newReqData) => {
+                        try {
+                            const { error } = await supabase.from('eventos').update({ requisitos: newReqData }).eq('id', eventData.id);
+                            if (error) throw error;
+                            // Update local memory so we don't lose it if we close and reopen modal without full refresh
+                            const localEv = allEventsData.find(e => e.id === eventData.id);
+                            if (localEv) localEv.requisitos = newReqData;
+                            eventData.requisitos = newReqData;
+                        } catch (e) {
+                            console.error("Error guardando checklist en DB:", e);
+                        }
+                    };
+
+                    configForCurrent.req.forEach(r => {
+                        const li = document.createElement('li');
+                        li.style.display = 'flex';
+                        li.style.justifyContent = 'space-between';
+                        li.style.alignItems = 'center';
+                        li.style.padding = '12px 0';
+                        li.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+
+                        // Soportar tres estados: true, false, y undefined
+                        const val = reqData[r.id];
+
+                        // --- SPECIAL LOGIC FOR ACTION_DRIVE (CREATE FOLDER) ---
+                        if (r.type === 'action_drive') {
+                            const hasFolder = !!reqData.folder_url && !reqData.folder_url.includes("1nyN81gZicYLBW6RyEHb_wZmEQoyqutps");
+
+                            // Si ya tiene carpeta:
+                            if (hasFolder) {
+                                li.innerHTML = `
+                                    <div style="flex:1; padding-right: 15px;">
+                                        <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    </div>
+                                    <div style="display: flex; gap: 15px; align-items: center; user-select: none;" id="verify-drive-box-${r.id}">
+                                        <span style="color: #64748b; font-size: 0.85rem;"><i class="ph ph-spinner ph-spin"></i> Verificando Drive...</span>
+                                    </div>
+                                `;
+                                reqList.appendChild(li);
+
+                                // Async Verification
+                                (async () => {
+                                    try {
+                                        const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                                            method: 'POST',
+                                            mode: 'cors',
+                                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                            body: JSON.stringify({ action: 'verificar_carpeta_evento', data: { folder_url: reqData.folder_url } })
+                                        });
+                                        const result = await response.json();
+
+                                        const box = document.getElementById(`verify-drive-box-${r.id}`);
+                                        if (box) {
+                                            if (result.status === "ok" && result.exists === true) {
+                                                box.innerHTML = `
+                                                    <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
+                                                    <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
+                                                `;
+                                                reqData[r.id] = true;
+                                                evaluateAdvanceButton(); // Allow advance
+                                            } else {
+                                                // Folder was deleted in Drive. Revert state.
+                                                delete reqData.folder_url;
+                                                reqData[r.id] = false;
+                                                await updateReqsInDB(reqData);
+                                                // Refresh the entire modal so it rerenders as the Si/No buttons
+                                                openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                            }
+                                        }
+                                    } catch (e) {
+                                        console.error("Error verificando carpeta:", e);
+                                        // On network error just assume it's created to avoid blocking the user
+                                        const box = document.getElementById(`verify-drive-box-${r.id}`);
+                                        if (box) {
+                                            box.innerHTML = `
+                                                <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
+                                                <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
+                                            `;
+                                            reqData[r.id] = true;
+                                            evaluateAdvanceButton();
+                                        }
+                                    }
+                                })();
+
+                                return; // Skip normal listeners setup for now
+                            }
+
+                            // Si NO tiene carpeta: Muestra el UI estandar pero pre-conectado a la acción
+                            li.innerHTML = `
+                                <div style="flex:1; padding-right: 15px;">
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                </div>
+                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                        </div>
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes" id="btn-create-drive-${r.id}">
+                                        <span class="lbl-yes-txt" style="font-weight: 500;">Sí</span>
+                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </label>
+                                </div>
+                            `;
+                            reqList.appendChild(li);
+
+                            const lblNoTxt = li.querySelector('.lbl-no-txt');
+                            const boxNo = li.querySelector('.no-box');
+                            const noIcon = li.querySelector('.no-icon');
+                            const lblNoContainer = li.querySelector('.custom-lbl-no');
+                            const btnCreateDrive = document.getElementById(`btn-create-drive-${r.id}`);
+
+                            // Estilo básico para "No" o neutral
+                            const applyStylesDrive = (stateVal) => {
+                                lblNoTxt.style.color = '#64748b';
+                                boxNo.style.borderColor = '#475569'; boxNo.style.background = 'transparent'; noIcon.style.opacity = '0';
+
+                                if (stateVal === false || stateVal === undefined) {
+                                    lblNoTxt.style.color = '#ef4444';
+                                    boxNo.style.borderColor = 'rgba(239, 68, 68, 0.4)'; boxNo.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    noIcon.style.opacity = '1'; noIcon.style.color = '#ef4444';
+                                }
+                            };
+
+                            applyStylesDrive(val);
+
+                            lblNoContainer.addEventListener('click', () => {
+                                reqData[r.id] = false;
+                                applyStylesDrive(false);
+                                evaluateAdvanceButton();
+                                updateReqsInDB(reqData);
+                            });
+
+                            btnCreateDrive.addEventListener('click', async () => {
+                                // Evitar dobles clicks
+                                if (btnCreateDrive.style.pointerEvents === 'none') return;
+
+                                // Reset No
+                                reqData[r.id] = false; applyStylesDrive(undefined);
+
+                                // UI Loading
+                                btnCreateDrive.style.pointerEvents = 'none';
+                                btnCreateDrive.innerHTML = `<span style="color:#64748b; font-size:0.85rem;"><i class="ph ph-spinner ph-spin"></i> Creando...</span>`;
+                                btnAdvance.disabled = true;
+
+                                // Format Folder name: DD/MM Ponente Tipo
+                                let dayStr = "00", monStr = "00";
+                                try {
+                                    const horariosStr = eventData.horario || '[]';
+                                    const horarios = typeof horariosStr === 'string' ? JSON.parse(horariosStr) : horariosStr;
+                                    if (horarios.length > 0 && horarios[0].fecha) {
+                                        const fi = String(horarios[0].fecha).trim();
+                                        if (fi.includes('/')) {
+                                            const p = fi.split('/');
+                                            dayStr = p[0].padStart(2, '0');
+                                            monStr = p[1].padStart(2, '0');
+                                        } else if (fi.includes('-')) {
+                                            const p = fi.split('-');
+                                            if (p[0].length === 4) { // YYYY-MM-DD
+                                                monStr = p[1].padStart(2, '0');
+                                                dayStr = p[2].padStart(2, '0');
+                                            } else { // DD-MM-YYYY
+                                                dayStr = p[0].padStart(2, '0');
+                                                monStr = p[1].padStart(2, '0');
+                                            }
+                                        } else {
+                                            const dateObj = new Date(fi + "T00:00:00");
+                                            if (!isNaN(dateObj)) {
+                                                dayStr = String(dateObj.getDate()).padStart(2, '0');
+                                                monStr = String(dateObj.getMonth() + 1).padStart(2, '0');
+                                            }
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.error("No se pudo parsear el horario para la fecha:", e);
+                                }
+                                const folderName = `${dayStr}/${monStr} ${eventData.nombre} ${eventData.tipo}`;
+
+                                let eventHorarioStr = "la fecha programada";
+                                try {
+                                    const hStr = eventData.horario || '[]';
+                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
+                                    if (hrs.length > 0 && hrs[0].fecha) {
+                                        eventHorarioStr = `${hrs[0].fecha} desde las ${hrs[0].inicio || ''} hasta las ${hrs[0].fin || ''}`;
+                                    }
+                                } catch (e) { }
+
+                                try {
+                                    // Petición real esperando respuesta JSON
+                                    const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                                        method: 'POST',
+                                        mode: 'cors',
+                                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                        body: JSON.stringify({
+                                            action: 'crear_carpeta_evento', data: {
+                                                folder_name: folderName,
+                                                event_name: eventData.nombre || "",
+                                                event_horario_str: eventHorarioStr
+                                            }
+                                        })
+                                    });
+
+                                    const result = await response.json();
+
+                                    if (result.status === "ok" && result.folder_url) {
+                                        reqData.folder_url = result.folder_url;
+                                        reqData[r.id] = true;
+                                        await updateReqsInDB(reqData);
+
+                                        // Refresh UI immediately to show the "CARPETA CREADA" state
+                                        btnCreateDrive.style.pointerEvents = 'auto'; // restore
+                                        openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                    } else {
+                                        throw new Error(result.error || "Error desconocido de GAS");
+                                    }
+
+                                } catch (err) {
+                                    console.error("Error solicitando creación de carpeta:", err);
+                                    btnCreateDrive.innerHTML = `<span class="lbl-yes-txt" style="font-weight: 500;">Sí</span>`;
+                                    btnCreateDrive.style.pointerEvents = 'auto';
+                                    applyStylesDrive(undefined);
+                                    Swal.fire('Error', 'No se pudo contactar con el servidor de Google Drive.', 'error');
+                                }
+                            });
+
+                            return; // Stop normal logic
+                        } else {
+                            // --- NORMAL YES/NO CHECKBOXES ---
+                            li.innerHTML = `
+                                <div style="flex:1; padding-right: 15px;">
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                </div>
+                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                        </div>
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes">
+                                        <span class="lbl-yes-txt" style="font-weight: 500;">Sí</span>
+                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </label>
+                                </div>
+                            `;
+                            reqList.appendChild(li);
+
+                            const lblNoTxt = li.querySelector('.lbl-no-txt');
+                            const lblYesTxt = li.querySelector('.lbl-yes-txt');
+                            const boxNo = li.querySelector('.no-box');
+                            const boxYes = li.querySelector('.yes-box');
+                            const noIcon = li.querySelector('.no-icon');
+                            const yesIcon = li.querySelector('.yes-icon');
+                            const lblNoContainer = li.querySelector('.custom-lbl-no');
+                            const lblYesContainer = li.querySelector('.custom-lbl-yes');
+
+                            // Function to apply styles based on boolean state (true, false, undefined)
+                            const applyStyles = (stateVal) => {
+                                // 1. Reset everything to gray/ghost state (Unselected)
+                                lblYesTxt.style.color = '#64748b';
+                                boxYes.style.borderColor = '#475569'; boxYes.style.background = 'transparent'; yesIcon.style.opacity = '0';
+
+                                lblNoTxt.style.color = '#64748b';
+                                boxNo.style.borderColor = '#475569'; boxNo.style.background = 'transparent'; noIcon.style.opacity = '0';
+
+                                // 2. Apply colors if actively selected
+                                if (stateVal === true) {
+                                    lblYesTxt.style.color = '#64748b';
+                                    boxYes.style.borderColor = '#10b981'; boxYes.style.background = 'transparent';
+                                    yesIcon.style.opacity = '1'; yesIcon.style.color = '#10b981';
+                                } else if (stateVal === false || stateVal === undefined) {
+                                    lblNoTxt.style.color = '#ef4444';
+                                    boxNo.style.borderColor = 'rgba(239, 68, 68, 0.4)'; boxNo.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    noIcon.style.opacity = '1'; noIcon.style.color = '#ef4444';
+                                }
+                            };
+
+                            // Initial render
+                            applyStyles(val);
+
+                            // Attach listeners
+                            lblNoContainer.addEventListener('click', () => {
+                                reqData[r.id] = false;
+                                applyStyles(false);
+                                evaluateAdvanceButton();
+                                updateReqsInDB(reqData);
+                            });
+
+                            lblYesContainer.addEventListener('click', () => {
+                                reqData[r.id] = true;
+                                applyStyles(true);
+                                evaluateAdvanceButton();
+                                updateReqsInDB(reqData);
+                            });
+                        }
+                    });
+
+                    evaluateAdvanceButton();
+
+                } else {
+                    // --- VIEJA LÓGICA: Checkbox nativo básico para los demás estados ---
+                    const li = document.createElement('li');
+                    li.className = 'req-item';
+
+                    // Checkbox logic
+                    let checkHtml = `<input type="checkbox" class="req-check" id="req-check-main">`;
+                    let labelHtml = `<label for="req-check-main" class="req-label">${configForCurrent.req}</label>`;
+                    let actionHtml = '';
+
+                    // Specific Logic Step 3 (Form Link)
+                    if (currentStep === 3) {
+                        actionHtml = `<a href="${configForCurrent.actionUrl}" target="_blank" class="req-link-btn">${configForCurrent.actionLabel} <i class="ph ph-arrow-square-out"></i></a>`;
+                    }
+
+                    // Specific Logic Step 5 (Redirect Button - Layout only)
+                    if (currentStep === 5) {
+                        actionHtml = `<button class="req-link-btn" onclick="document.querySelector('[data-target=\\'comunicacion\\']').click(); document.getElementById('status-modal').classList.remove('active');">Ir a Comunicación <i class="ph ph-arrow-right"></i></button>`;
+                    }
+
+                    li.innerHTML = `${checkHtml} <div style="flex:1">${labelHtml}</div> ${actionHtml}`;
+                    reqList.appendChild(li);
+
+                    // Enable button on check
+                    li.querySelector('.req-check').addEventListener('change', (e) => {
+                        isStepCompletable = e.target.checked;
+                    });
                 }
-
-                // Specific Logic Step 5 (Redirect Button - Layout only)
-                if (currentStep === 5) {
-                    actionHtml = `<button class="req-link-btn" onclick="document.querySelector('[data-target=\\'comunicacion\\']').click(); document.getElementById('status-modal').classList.remove('active');">Ir a Comunicación <i class="ph ph-arrow-right"></i></button>`;
-                }
-                // Specific Logic Step 7 (Redirect Button)
-                if (currentStep === 7) { // Wait, logic says 7 is "Concluido". Transitions only go up to 7. 
-                    // Redirects happen when *entering* or *completing*? 
-                    // "para el paso 7 que mande a generacion" -> likely when entering 7 or completing 6?
-                    // Let's assume on completion of 6 -> 7.
-                }
-
-                li.innerHTML = `${checkHtml} <div style="flex:1">${labelHtml}</div> ${actionHtml}`;
-                reqList.appendChild(li);
-
-                // Enable button on check
-                li.querySelector('.req-check').addEventListener('change', (e) => {
-                    btnAdvance.disabled = !e.target.checked;
-                });
             }
         }
 
@@ -1260,6 +1985,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Setup Buttons
         btnAdvance.onclick = () => {
+            if (!isStepCompletable && currentStep < 7) {
+                Swal.fire({
+                    icon: 'warning',
+                    title: 'Falta completar requisitos',
+                    text: 'Debe marcar y cumplir con todos los requisitos listados en esta etapa antes de poder avanzar.',
+                    confirmButtonColor: '#8b5cf6'
+                });
+                return;
+            }
+
             const ponenteInput = document.getElementById('status-ponente-input');
             let newPonente = null;
             if (ponenteInput) {
@@ -1365,6 +2100,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 .eq('id', eventId);
 
             if (updateError) throw updateError;
+
+            // Sync status to sheets
+            const originalEvent = allEventsData.find(e => e.id === eventId);
+            if (originalEvent) {
+                await syncToGoogleSheets("actualizar_estado", {
+                    sheet_id: originalEvent.sheet_id,
+                    status: originalEvent.status,
+                    estado_especial: actionName
+                });
+            }
+
             Swal.fire('¡Éxito!', 'Evento marcado como ' + actionName + ' exitosamente.', 'success');
             document.getElementById('status-modal').classList.remove('active');
             loadEvents();
@@ -1395,6 +2141,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 .eq('id', eventData.id);
 
             if (updateError) throw updateError;
+
+            // Sync status to sheets
+            await syncToGoogleSheets("actualizar_estado", {
+                sheet_id: eventData.sheet_id,
+                status: eventData.status,
+                estado_especial: ""
+            });
+
             Swal.fire('¡Éxito!', 'Evento reanudado exitosamente.', 'success');
             document.getElementById('status-modal').classList.remove('active');
             loadEvents();
@@ -1433,6 +2187,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw updateError;
             }
 
+            // Sync status to sheets
+            await syncToGoogleSheets("actualizar_estado", {
+                sheet_id: eventData.sheet_id,
+                status: targetStep,
+                estado_especial: eventData.estado_especial || "",
+                ponente: newPonente || eventData.ponente
+            });
+
             Swal.fire({
                 toast: true,
                 position: 'top-end',
@@ -1457,6 +2219,82 @@ document.addEventListener('DOMContentLoaded', () => {
         closeStatusModalBtn.addEventListener('click', () => {
             document.getElementById('status-modal').classList.remove('active');
         });
+    }
+
+
+    // --- REAL-TIME UNI-DIRECTIONAL SYNC TO GOOGLE SHEETS --- //
+    async function syncToGoogleSheets(action, dataObj) {
+        if (!GOOGLE_APP_SCRIPT_WEBHOOK_URL) return;
+
+        // Forma un payload consistente similar a cómo lo hacía crear_evento originalmente 
+        // pero adaptado para todas las acciones (crear, actualizar, eliminar, actualizar_estado).
+
+        let webhookPayload = {
+            action: action,
+            data: { ...dataObj }
+        };
+
+        if (action === 'crear_evento' || action === 'actualizar_evento') {
+            const meses = ['ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO', 'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE'];
+            let fechaInicioStr = '', fechaFinStr = '', primeraHora = '', mesNombre = '';
+
+            try {
+                const schedule = JSON.parse(dataObj.horario || '[]');
+                if (schedule && schedule.length > 0) {
+                    const partesIni = schedule[0].fecha.split('-');
+                    if (partesIni.length === 3) fechaInicioStr = `${partesIni[2]}/${partesIni[1]}/${partesIni[0]}`;
+
+                    const partesFin = schedule[schedule.length - 1].fecha.split('-');
+                    if (partesFin.length === 3) fechaFinStr = `${partesFin[2]}/${partesFin[1]}/${partesFin[0]}`;
+
+                    if (partesIni.length === 3) {
+                        const [yyyy, mm, dd] = partesIni;
+                        const iniObj = new Date(yyyy, mm - 1, dd);
+                        mesNombre = meses[iniObj.getMonth()] || '';
+                    }
+
+                    if (schedule[0].inicio) {
+                        const [hh, mm] = schedule[0].inicio.split(':');
+                        let mH = parseInt(hh, 10);
+                        let ampm = mH >= 12 ? 'p. m.' : 'a. m.';
+                        mH = mH % 12 || 12;
+                        primeraHora = `${mH}:${mm} ${ampm}`;
+                    }
+                }
+            } catch (e) { }
+
+            let finalSede = dataObj.sedes ? dataObj.sedes : 'Todas';
+
+            webhookPayload.data = {
+                mes: mesNombre,
+                fecha_inicio: fechaInicioStr,
+                fecha_fin: fechaFinStr,
+                hora: primeraHora,
+                tipo: dataObj.tipo,
+                nombre: dataObj.nombre,
+                descripcion: (dataObj.descripcion_evento || '').trim(),
+                ponente: dataObj.ponente && dataObj.ponente !== 'Pendiente' ? dataObj.ponente : '',
+                audiencia: dataObj.audiencia,
+                modalidad: dataObj.modalidad,
+                sedes: finalSede,
+                responsable: dataObj.responsable || '',
+                sheet_id: dataObj.sheet_id,
+                is_public: dataObj.is_public ? true : false,
+                status: dataObj.status
+            };
+        }
+
+        try {
+            await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "text/plain" },
+                body: JSON.stringify(webhookPayload)
+            });
+            console.log("✅ Sync To Sheets successful for action:", action);
+        } catch (e) {
+            console.error("❌ Error en webhook de Google Sheets:", e);
+        }
     }
 
 
@@ -1864,16 +2702,98 @@ document.addEventListener('DOMContentLoaded', () => {
     const importPreview = document.getElementById('import-preview');
     const importPreviewContent = document.getElementById('import-preview-content');
     const btnProcessImport = document.getElementById('btn-process-import');
+    const btnSyncUrl = document.getElementById('btn-sync-url');
+    const sheetUrlInput = document.getElementById('sheet-url-input');
 
     let parsedImportEventData = null;
 
     if (importExcelBtn) {
         importExcelBtn.addEventListener('click', () => {
             if (importExcelData) importExcelData.value = '';
+            if (sheetUrlInput) sheetUrlInput.value = '';
             if (importPreview) importPreview.classList.add('hidden');
             if (btnProcessImport) btnProcessImport.disabled = true;
             if (importExcelModal) importExcelModal.classList.add('active');
             parsedImportEventData = null;
+        });
+    }
+
+    // Lógica para exportación por URL (Sincronización Automática)
+    if (btnSyncUrl && sheetUrlInput) {
+        btnSyncUrl.addEventListener('click', async () => {
+            const url = sheetUrlInput.value.trim();
+            if (!url) {
+                Swal.fire('Atención', 'Por favor, ingresa el enlace de tu Google Sheets.', 'warning');
+                return;
+            }
+
+            // Expresión regular para extraer ID del documento y (opcional) el GID de la hoja
+            const idMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+            if (!idMatch) {
+                Swal.fire('Error', 'No se pudo identificar un ID de Google Sheets válido en este enlace.', 'error');
+                return;
+            }
+
+            const docId = idMatch[1];
+            const gidMatch = url.match(/[#&]gid=([0-9]+)/);
+            const gid = gidMatch ? gidMatch[1] : '0';
+
+            const csvUrl = `https://docs.google.com/spreadsheets/d/${docId}/export?format=csv&gid=${gid}`;
+
+            // Cambiamos estado de botón
+            const originalText = btnSyncUrl.innerHTML;
+            btnSyncUrl.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Cargando...';
+            btnSyncUrl.disabled = true;
+
+            try {
+                const response = await fetch(csvUrl);
+                if (!response.ok) {
+                    throw new Error(`CÓDIGO DE RED HTTP: ${response.status}`);
+                }
+                const csvText = await response.text();
+
+                // Utilizamos PapaParse para un procesado CSV robusto (manejo de comas internas, saltos de linea, etc)
+                if (window.Papa) {
+                    const parsed = Papa.parse(csvText, { skipEmptyLines: true });
+                    if (parsed.data && parsed.data.length > 0) {
+                        // Construimos una pseudo variable tabulada para enviarsela al algoritmo heurístico existente de abajo
+                        const tabbedData = parsed.data.map(row => row.join('\t')).join('\n');
+                        importExcelData.value = tabbedData;
+                        // Forzamos el trigger del evento 'input' para que se autoevalue
+                        const event = new Event('input', { bubbles: true });
+                        importExcelData.dispatchEvent(event);
+
+                        Swal.fire({
+                            toast: true,
+                            position: 'top-end',
+                            icon: 'success',
+                            title: '¡Sincronización leída con éxito!',
+                            showConfirmButton: false,
+                            timer: 2000
+                        });
+                    } else {
+                        Swal.fire('Error', 'El archivo no contiene datos legibles o la pestaña está vacía.', 'error');
+                    }
+                } else {
+                    // Fallback ingenuo si papa parse fallase por CDN blocker
+                    const rows = csvText.split(/\r?\n/).filter(r => r.trim() !== '');
+                    const tabbedData = rows.map(r => r.split(',').join('\t')).join('\n'); // Fallback super ingenuo pero funcional a prueba de fallos
+                    importExcelData.value = tabbedData;
+                    const event = new Event('input', { bubbles: true });
+                    importExcelData.dispatchEvent(event);
+                }
+
+            } catch (error) {
+                console.error("Error cargando CSV:", error);
+                Swal.fire({
+                    title: 'Error de Acceso',
+                    html: `<p>No se pudo descargar la información.</p><p><small style="color:red">Asegúrate de que en el botón azul "Compartir" de Google Sheets hayas seleccionado <b>"Cualquier Persona con el Enlace (Lector)"</b>.</small></p>`,
+                    icon: 'error'
+                });
+            } finally {
+                btnSyncUrl.innerHTML = originalText;
+                btnSyncUrl.disabled = false;
+            }
         });
     }
 
