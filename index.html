@@ -25,6 +25,11 @@
     <!-- PapaParse para procesado robusto de CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
+    <!-- jQuery y Select2 para Autocompletado Búsqueda en Selects -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
     <link rel="stylesheet" href="styles.css">
 </head>
 
@@ -89,6 +94,11 @@
                         style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.5); color: #10b981; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
                         <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i>
                         Sheets COT PLN
+                    </button>
+                    <button class="btn-primary" onclick="window.open('portal.html', '_blank')"
+                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+                        <i class="ph ph-student" style="font-size: 1.2rem;"></i>
+                        Portal Alumnos
                     </button>
                     <button class="btn-primary"
                         onclick="window.open('https://automatizardocumentos-pln-s8i2.onrender.com/', '_blank')"
@@ -212,54 +222,7 @@
                     <p>Configura las plantillas de correo y mensajes.</p>
                 </div>
 
-                <!-- Importación de Datos -->
-                <div class="card" style="margin-bottom: 2rem;">
-                    <h3><i class="ph ph-users-three"></i> Importar Participantes (Google Forms .csv)</h3>
-                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
-                        Adjunta el archivo CSV. El sistema detectará automáticamente DNIs, Nombres y Correos
-                        (Institucional >
-                        Personal).
-                    </p>
-
-                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-                        <input type="file" id="csv-file-input" accept=".csv" class="input-modern"
-                            style="max-width: 400px;">
-                        <button id="btn-process-csv" class="btn-primary"><i class="ph ph-play"></i> Cargar y
-                            Validar</button>
-                    </div>
-
-                    <!-- Tabla de Previsualización -->
-                    <div id="preview-container" class="hidden" style="margin-top: 1.5rem; overflow-x: auto;">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th width="100">Estado</th>
-                                    <th>DNI</th>
-                                    <th>Participante</th>
-                                    <th>Correo Electrónico</th>
-                                    <th>Teléfono</th>
-                                    <th width="100">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="participants-table-body">
-                                <!-- JS Fill -->
-                            </tbody>
-                        </table>
-
-                        <div
-                            style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                            <span id="import-stats" style="color: var(--text-muted); font-size: 0.9rem;"></span>
-
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <input type="text" id="contact-label" placeholder="Etiqueta (Ej: Webinar)"
-                                    class="input-modern small" style="width: 150px;">
-                                <button id="btn-export-contacts" class="btn-primary" disabled>
-                                    <i class="ph ph-export"></i> Exportar Contactos Google
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Importación de Datos (Movido a Generación) -->
 
                 <div class="grid-layout">
                     <div class="card">
@@ -354,18 +317,99 @@
                     <p>Sube tu base de datos y genera los certificados en PDF.</p>
                 </div>
 
-                <div class="upload-area">
-                    <div class="drop-zone">
-                        <i class="ph ph-upload-simple"></i>
-                        <h3>Arrastra tu archivo CSV o Excel aquí</h3>
-                        <p>o haz clic para seleccionar</p>
-                        <button class="btn-secondary">Seleccionar Archivo</button>
+                <div class="card" style="margin-bottom: 2rem;">
+                    <h3><i class="ph ph-calendar"></i> 1. Seleccione el Evento</h3>
+                    <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+                        Elija a qué evento desea vincular a los estudiantes.
+                    </p>
+                    <select id="cert-event-selector" class="input-modern" style="max-width: 600px;">
+                        <option value="" disabled selected>Cargando eventos...</option>
+                    </select>
+                </div>
+
+                <!-- Importación de Datos -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <h3><i class="ph ph-users-three"></i> 2. Subir Lista de Asistencia (Google Forms .csv)</h3>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                        Adjunta el archivo CSV de Asistencia descargado de Google Forms. Asegúrese de haber seleccionado
+                        un evento arriba.
+                    </p>
+
+                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                        <input type="file" id="csv-file-input" accept=".csv" class="input-modern"
+                            style="max-width: 400px;">
+                        <button id="btn-process-csv" class="btn-primary"><i class="ph ph-play"></i> Analizar
+                            CSV</button>
+                    </div>
+
+                    <!-- Tabla de Previsualización -->
+                    <div id="preview-container" class="hidden" style="margin-top: 1.5rem; overflow-x: auto;">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th width="100">Estado</th>
+                                    <th>DNI</th>
+                                    <th>Participante</th>
+                                    <th>Correo Electrónico</th>
+                                    <th>Teléfono</th>
+                                    <th>Turno</th>
+                                    <th>Ciclo</th>
+                                    <th>Egresado</th>
+                                    <th width="100">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="participants-table-body">
+                                <!-- JS Fill -->
+                            </tbody>
+                        </table>
+
+                        <div
+                            style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                            <span id="import-stats" style="color: var(--text-muted); font-size: 0.9rem;"></span>
+
+                            <!-- Grupo Izquierdo (Legacy Contacts) -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center; display: none;">
+                                <!-- Hidden since its mostly for legacy email workflow -->
+                                <input type="text" id="contact-label" placeholder="Etiqueta (Ej: Webinar)"
+                                    class="input-modern small" style="width: 150px;">
+                                <button id="btn-export-contacts" class="btn-primary" disabled>
+                                    <i class="ph ph-export"></i> Exportar Contactos Google
+                                </button>
+                            </div>
+                            <!-- Grupo Derecho (Data Base Sync) -->
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <button id="btn-save-participantsdb" class="btn-primary"
+                                    style="background: #10b981; border-color: #059669;">
+                                    <i class="ph ph-database"></i> Guardar en Base de Datos
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="preview-area placeholder">
-                    <i class="ph ph-image"></i>
-                    <p>La vista previa del certificado aparecerá aquí</p>
+                <!-- Database View (Students saved for the selected event) -->
+                <div class="card">
+                    <h3><i class="ph ph-users"></i> 3. Estudiantes Guardados en Base de Datos</h3>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                        Lista oficial de estudiantes registrados en Supabase para el evento seleccionado.
+                    </p>
+
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>DNI</th>
+                                <th>Nombres y Apellidos</th>
+                                <th>Correo</th>
+                                <th>Estado Constancia / Certificado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="db-participants-table-body">
+                            <tr>
+                                <td colspan="4" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                                    Selecciona un evento arriba para cargar la lista.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </main>
@@ -754,6 +798,57 @@
                         Retroceder</button>
                     <button type="button" id="btn-advance-status" class="btn-primary">Avanzar Estado</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Revisión de Participantes -->
+    <div id="participant-review-modal" class="modal-overlay">
+        <div class="modal-content participant-review-modal">
+            <div class="modal-header">
+                <h2><i class="ph ph-users"></i> Revisión de Inscritos</h2>
+                <button class="close-modal"
+                    onclick="document.getElementById('participant-review-modal').classList.remove('active')"><i
+                        class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="search-container">
+                    <div style="position: relative; flex: 1;">
+                        <i class="ph ph-magnifying-glass"
+                            style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
+                        <input type="text" id="participant-search" class="input-modern"
+                            placeholder="Buscar por DNI o nombres..." style="padding-left: 35px; margin-top: 0;">
+                    </div>
+                    <div id="sync-stats" style="font-size: 0.85rem; color: var(--text-muted);">
+                        Total: <span id="total-participants">0</span> | <span style="color: #4ade80;">OK: <span
+                                id="ok-participants">0</span></span> | <span style="color: #f87171;">Obs: <span
+                                id="obs-participants">0</span></span>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="review-table">
+                        <thead>
+                            <tr>
+                                <th>DNI</th>
+                                <th>Nombres</th>
+                                <th>Apellidos</th>
+                                <th>Correo</th>
+                                <th>Celular</th>
+                                <th>Categoría</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="participants-table-body">
+                            <!-- Llenado dinámico -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary"
+                    onclick="document.getElementById('participant-review-modal').classList.remove('active')">Cerrar</button>
+                <button type="button" id="btn-save-participants" class="btn-primary">Guardar Cambios</button>
             </div>
         </div>
     </div>

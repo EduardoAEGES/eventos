@@ -42,6 +42,13 @@ function doOptions(e) {
 
 const GOOGLE_SHEET_ID = "1p34BL8wZua7Pv4G362HTZUkAVGc_s-1w7HMceZa61T8"; // ID extraído de tu enlace de Google Sheets
 
+// Helper to extract ID from many types of Google URLs (Drive, Forms, Sheets)
+function extractIdFromUrl(url) {
+    if (!url) return "";
+    let match = url.match(/[-\w]{25,}/);
+    return match ? match[0] : url;
+}
+
 // Buscador y traductor de Sedes para la validación de datos de Sheets
 function traducirSedes(sedesStr) {
     if (!sedesStr) return "Todas";
@@ -247,7 +254,7 @@ function doPost(e) {
 
         } else if (input && input.action === "crear_carpeta_evento") {
             const ev = input.data; // Needs: folder_name
-            const parentFolderId = "1nyN81gZicYLBW6RyEHb_wZmEQoyqutps";
+            const parentFolderId = "1X-RhlOgEDXZSc8Mx-JbfxuTzGV4puIZM";
 
             if (!ev || !ev.folder_name) {
                 return ContentService.createTextOutput(JSON.stringify({ "error": "Falta el nombre de la carpeta (folder_name)" }))
@@ -259,6 +266,7 @@ function doPost(e) {
                 const folders = parentFolder.getFoldersByName(ev.folder_name);
 
                 let eventFolder;
+                let formInscUrl = "";
                 if (folders.hasNext()) {
                     // Folder already exists, just return it
                     eventFolder = folders.next();
@@ -271,6 +279,7 @@ function doPost(e) {
                     // --- CREACIÓN AUTOMÁTICA DE FORMULARIOS ---
                     try {
                         const eventNameTitle = ev.event_name || ev.folder_name.replace(/^[0-9\/]+ /, '');
+                        const eventTipo = ev.event_tipo || "Evento";
                         const dateStr = ev.event_horario_str || "la fecha y hora programada";
 
                         // 1. Buscar el banner de imagen en Drive (Debe llamarse exactamente "Wallpaper certus.jpg")
@@ -283,6 +292,7 @@ function doPost(e) {
                         // ========== FORMULARIO DE INSCRIPCIÓN ==========
                         const formInscripcion = FormApp.create("INSCRIPCION AL TALLER VIRTUAL: " + eventNameTitle);
                         DriveApp.getFileById(formInscripcion.getId()).moveTo(eventFolder);
+                        formInscUrl = formInscripcion.getPublishedUrl();
 
                         // Intentar aplicar la imagen al Formulario 1
                         if (bannerBlob) {
@@ -293,28 +303,29 @@ function doPost(e) {
                             }
                         }
 
-                        formInscripcion.setDescription("Estimad@ Estudiante:\nQueremos invitarte al Taller virtual que se realizará el día " + dateStr + ".\n\nImportante:\n1. Completa el presente formulario de inscripción verificando que tus datos estén correctos.\n2. Una vez inscrito, te enviaremos a tu correo un recordatorio para la asistencia de este evento\n\n¡Te esperamos!");
+                        formInscripcion.setDescription("Estimad@ Estudiante:\nQueremos invitarte al " + eventTipo + " que se realizará el día " + dateStr + ".\n\nImportante:\n1. Completa el presente formulario de inscripción verificando que tus datos estén correctos.\n2. Una vez inscrito, te enviaremos a tu correo un recordatorio para la asistencia de este evento\n\n¡Te esperamos!");
+                        formInscripcion.setConfirmationMessage("Gracias por inscribirse al " + eventTipo + " " + eventNameTitle + ". Se le enviará el recordatorio del evento 1 día antes junto con el link de acceso si corresponde a su correo y whatsapp.");
 
                         formInscripcion.addTextItem().setTitle('Nombres:').setRequired(true);
                         formInscripcion.addTextItem().setTitle('Apellidos:').setRequired(true);
                         formInscripcion.addTextItem().setTitle('DNI:').setRequired(true);
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Usted como parte de la familia CERTUS es:')
-                            .setChoiceValues(['DOCENTE', 'ESTUDIANTE', 'EGRESADO'])
+                            .setChoiceValues(['DOCENTE', 'ESTUDIANTE', 'EGRESADO', 'EXTERNO'])
                             .setRequired(true);
                         formInscripcion.addTextItem()
-                            .setTitle('Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe)')
+                            .setTitle('Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)')
                             .setRequired(true);
                         formInscripcion.addTextItem()
                             .setTitle('Número del celular activo (Nos comunicaremos a este número)')
                             .setRequired(true);
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Ciclo:')
-                            .setChoiceValues(['I Ciclo', 'II Ciclo', 'III Ciclo', 'IV Ciclo', 'V Ciclo', 'VI Ciclo', 'Docente', 'Egresado'])
+                            .setChoiceValues(['I Ciclo', 'II Ciclo', 'III Ciclo', 'IV Ciclo', 'V Ciclo', 'VI Ciclo', 'Docente', 'Egresado', 'No aplica'])
                             .setRequired(true);
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Turno:')
-                            .setChoiceValues(['Mañana', 'Diurno', 'Tarde', 'Noche', 'Egresado'])
+                            .setChoiceValues(['Mañana', 'Diurno', 'Tarde', 'Noche', 'Egresado', 'No aplica'])
                             .setRequired(true);
 
                         // ========== FORMULARIO DE ASISTENCIA ==========
@@ -358,7 +369,8 @@ function doPost(e) {
 
                 return ContentService.createTextOutput(JSON.stringify({
                     "status": "ok",
-                    "folder_url": eventFolder.getUrl()
+                    "folder_url": eventFolder.getUrl(),
+                    "form_inscripcion_url": formInscUrl
                 })).setMimeType(ContentService.MimeType.JSON);
 
             } catch (folderErr) {
@@ -380,11 +392,150 @@ function doPost(e) {
                 const f = DriveApp.getFolderById(folderId);
                 const exists = !f.isTrashed();
 
-                return ContentService.createTextOutput(JSON.stringify({ "status": "ok", "exists": exists }))
+                let formInscUrl = "";
+                if (exists) {
+                    try {
+                        const files = f.getFilesByType(MimeType.GOOGLE_FORMS);
+                        while (files.hasNext()) {
+                            const file = files.next();
+                            if (file.getName().includes("INSCRIPCION")) {
+                                const form = FormApp.openById(file.getId());
+                                formInscUrl = form.getPublishedUrl();
+                                break;
+                            }
+                        }
+                    } catch (e) { }
+                }
+
+                return ContentService.createTextOutput(JSON.stringify({ "status": "ok", "exists": exists, "form_inscripcion_url": formInscUrl }))
                     .setMimeType(ContentService.MimeType.JSON);
             } catch (folderErr) {
                 // If getFolderById throws an error, the folder doesn't exist or is inaccessible
                 return ContentService.createTextOutput(JSON.stringify({ "status": "ok", "exists": false }))
+                    .setMimeType(ContentService.MimeType.JSON);
+            }
+        } else if (input && input.action === 'subir_foto_ponente') {
+            const folderUrl = input.data.folder_url;
+            const fileName = input.data.file_name;
+            const mimeType = input.data.mime_type;
+            const fileContent = input.data.file_content; // Base64 string
+
+            if (!folderUrl || !fileContent) {
+                return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": "Faltan datos" })).setMimeType(ContentService.MimeType.JSON);
+            }
+
+            // Extract folder ID from URL
+            let folderId = "";
+            const match = folderUrl.match(/folders\/([a-zA-Z0-9_-]+)/);
+            if (match && match[1]) {
+                folderId = match[1];
+            } else {
+                folderId = folderUrl;
+            }
+
+            try {
+                const f = DriveApp.getFolderById(folderId);
+                const decoded = Utilities.base64Decode(fileContent);
+                const blob = Utilities.newBlob(decoded, mimeType, fileName);
+                const file = f.createFile(blob);
+
+                return ContentService.createTextOutput(JSON.stringify({ "status": "ok", "file_url": file.getUrl() }))
+                    .setMimeType(ContentService.MimeType.JSON);
+            } catch (folderErr) {
+                return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": "No se pudo acceder a la carpeta o guardar el archivo: " + folderErr.toString() })).setMimeType(ContentService.MimeType.JSON);
+            }
+        } else if (input && input.action === 'vincular_y_obtener_respuestas') {
+            const ev = input.data;
+            if (!ev || (!ev.form_url && !ev.folder_url)) {
+                return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": "Falta form_url o folder_url" })).setMimeType(ContentService.MimeType.JSON);
+            }
+
+            console.log("Iniciando vinculación para Form: " + ev.form_url + " en Folder: " + ev.folder_url);
+
+            try {
+                let form = null;
+
+                // CRÍTICO: Si la URL contiene "/e/", es un link publicado y FormApp NO PUEDE abrirlo por ID ni URL.
+                // En ese caso, OBLIGATORIAMENTE buscamos por Carpeta.
+                const isPublishedUrl = ev.form_url && ev.form_url.includes('/e/');
+
+                if (!isPublishedUrl && ev.form_url) {
+                    try {
+                        const formId = extractIdFromUrl(ev.form_url);
+                        form = FormApp.openById(formId);
+                    } catch (e) {
+                        console.log("Fallo apertura directa, intentando por carpeta...");
+                    }
+                }
+
+                if (!form && ev.folder_url) {
+                    const folderId = extractIdFromUrl(ev.folder_url);
+                    const folder = DriveApp.getFolderById(folderId);
+                    const files = folder.getFilesByType(MimeType.GOOGLE_FORMS);
+                    while (files.hasNext()) {
+                        const file = files.next();
+                        if (file.getName().toUpperCase().includes("INSCRIPCION")) {
+                            form = FormApp.openById(file.getId());
+                            console.log("Formulario encontrado en carpeta: " + file.getName());
+                            break;
+                        }
+                    }
+                }
+
+                if (!form) {
+                    throw new Error("No se pudo identificar el formulario de edición. Los links de formulario publicados (/e/...) no pueden abrirse directamente. Asegúrate de que la carpeta del evento exista.");
+                }
+
+                let ssId = form.getDestinationId();
+                let ss;
+
+                if (!ssId) {
+                    const formFile = DriveApp.getFileById(form.getId());
+                    const parentFolders = formFile.getParents();
+                    let parentFolder = parentFolders.hasNext() ? parentFolders.next() : DriveApp.getRootFolder();
+
+                    const fileName = "RESUMEN DE INSCRITOS: " + form.getTitle();
+                    const existingFiles = parentFolder.getFilesByName(fileName);
+
+                    if (existingFiles.hasNext()) {
+                        ss = SpreadsheetApp.openById(existingFiles.next().getId());
+                        form.setDestination(FormApp.DestinationType.GOOGLE_SHEETS, ss.getId());
+                    } else {
+                        ss = SpreadsheetApp.create(fileName);
+                        form.setDestination(FormApp.DestinationType.GOOGLE_SHEETS, ss.getId());
+                        const ssFile = DriveApp.getFileById(ss.getId());
+                        ssFile.moveTo(parentFolder);
+                    }
+                } else {
+                    ssId = extractIdFromUrl(ssId);
+                    ss = SpreadsheetApp.openById(ssId);
+                }
+
+                // Obtener las respuestas actuales
+                const responses = form.getResponses();
+                const dataArray = [];
+
+                responses.forEach(response => {
+                    const itemResponses = response.getItemResponses();
+                    const row = {
+                        timestamp: response.getTimestamp()
+                    };
+                    itemResponses.forEach(itemResponse => {
+                        const title = itemResponse.getItem().getTitle();
+                        const responseVal = itemResponse.getResponse();
+                        row[title] = responseVal;
+                    });
+                    dataArray.push(row);
+                });
+
+                return ContentService.createTextOutput(JSON.stringify({
+                    "status": "ok",
+                    "spreadsheet_url": ss.getUrl(),
+                    "responses": dataArray
+                })).setMimeType(ContentService.MimeType.JSON);
+
+            } catch (err) {
+                return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": err.toString() }))
                     .setMimeType(ContentService.MimeType.JSON);
             }
         }

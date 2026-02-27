@@ -1,0 +1,1740 @@
+﻿diff --git a/script.js b/script.js
+index 1f3e956..541b603 100644
+--- a/script.js
++++ b/script.js
+@@ -44,6 +44,26 @@ document.addEventListener('DOMContentLoaded', () => {
+         }, 100 * index);
+     });
+ 
++    // --- INITIALIZE SELECT2 AUTOCOMPLETE ---
++    // Make sure it attaches correctly to the modal so the search input is clickable
++    if ($.fn.select2) {
++        $('#event-type').select2({
++            placeholder: "Seleccione un tipo...",
++            width: '100%',
++            dropdownParent: $('#event-modal')
++        });
++
++        // Initialize Select2 on the dashboard filters
++        $('#calendar-visibility-filter, #calendar-sede-filter').select2({
++            width: '100%'
++        });
++
++        // The cert-event selector is outside a modal, on the main page
++        $('#cert-event-selector').select2({
++            placeholder: "Seleccione un evento...",
++            width: '100%'
++        });
++    }
+ 
+     // --- EVENT MODAL LOGIC ---
+     const modal = document.getElementById('event-modal');
+@@ -590,6 +610,28 @@ document.addEventListener('DOMContentLoaded', () => {
+         const grid = document.getElementById('events-grid');
+         grid.innerHTML = ''; // Clear current
+ 
++        // Actualizar selector de eventos en la pesta├▒a Generaci├│n
++        const certEventSelector = document.getElementById('cert-event-selector');
++        if (certEventSelector) {
++            certEventSelector.innerHTML = '<option value="" disabled selected>Selecciona un evento...</option>';
++            // Sort events by custom order or just date (newest first usually better for this)
++            const sortedForSelect = [...events].reverse();
++            sortedForSelect.forEach(ev => {
++                if (ev.estado_especial === 'Cancelado') return; // no certs for cancelled
++
++                let dateStr = "Sin fecha";
++                try {
++                    const hs = JSON.parse(ev.horario || '[]');
++                    if (hs.length > 0 && hs[0].fecha) dateStr = hs[0].fecha;
++                } catch (e) { }
++
++                const opt = document.createElement('option');
++                opt.value = ev.id;
++                opt.textContent = `[${dateStr}] ${ev.nombre}`;
++                certEventSelector.appendChild(opt);
++            });
++        }
++
+         if (events.length === 0) {
+             grid.innerHTML = '<p style="color:white; opacity:0.7">No hay eventos registrados.</p>';
+             return;
+@@ -633,11 +675,11 @@ document.addEventListener('DOMContentLoaded', () => {
+                 <p class="event-meta"><i class="ph ph-calendar-blank"></i> ${event.tipo}</p>
+                 <p class="event-meta"><i class="ph ph-users"></i> ${event.modalidad}</p>
+                 ${metaExtra}
+-                
++
+                 <div class="event-progress">
+                     <div class="progress-bar" style="width: ${progress}%" ${event.estado_especial === 'Cancelado' ? 'style="background: #f87171"' : event.estado_especial === 'Postergado' ? 'style="background: #f59e0b"' : ''}></div>
+                 </div>
+-                
++
+                 <div class="event-actions">
+                     ${actionHtml}
+                     <button class="btn-icon small" title="Editar Evento" onclick="editEvent('${encodeURIComponent(JSON.stringify(event))}')"><i class="ph ph-pencil-simple"></i></button>
+@@ -993,7 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                 <p style="margin-bottom: 0.7rem;"><strong>Tipo:</strong> <span style="color: #1e293b;">${eventData.tipo}</span></p>
+                 <p style="margin-bottom: 0.7rem;"><strong>Responsable:</strong> <span style="color: #1e293b;">${eventData.responsable || 'No especificado'}</span></p>
+                 <p style="margin-bottom: 1.2rem; padding: 8px; background: rgba(59,130,246,0.05); border-radius: 6px;">
+-                    <strong style="display:block; margin-bottom: 4px;">Descripci├│n:</strong> 
++                    <strong style="display:block; margin-bottom: 4px;">Descripci├│n:</strong>
+                     <span style="color: #334155; font-size:0.9rem;">${eventData.descripcion_evento || 'Sin descripci├│n'}</span>
+                 </p>
+                 <p style="margin-bottom: 0.7rem;"><strong>Modalidad:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
+@@ -1171,10 +1213,10 @@ document.addEventListener('DOMContentLoaded', () => {
+         let detailText = '';
+ 
+         // Match detail which is the inner parenthesis at the end of the text
+-        const detailMatch = cleanAud.match(/\(([^)]+)\)$/);
++        const detailMatch = audBase.match(/\(([^)]+)\)$/);
+         if (detailMatch && detailMatch[1]) {
+             detailText = detailMatch[1].trim();
+-            audBase = cleanAud.replace(/\([^)]+\)$/, '').trim();
++            audBase = audBase.replace(/\([^)]+\)$/, '').trim();
+         }
+ 
+         if (detailText) {
+@@ -1264,7 +1306,7 @@ document.addEventListener('DOMContentLoaded', () => {
+         const draft = {
+             tipo: document.getElementById('event-type').value,
+             nombre: document.getElementById('event-name').value,
+-            ponente: document.getElementById('event-ponente').value,
++            ponente: document.getElementById('event-ponente') ? document.getElementById('event-ponente').value : 'Pendiente',
+             descripcion_evento: document.getElementById('event-descripcion').value,
+             modalidad: document.querySelector('input[name="modality"]:checked')?.value || 'Presencial',
+             is_public: document.getElementById('event-is-public').checked,
+@@ -1450,7 +1492,7 @@ document.addEventListener('DOMContentLoaded', () => {
+         const data = {
+             tipo: document.getElementById('event-type').value,
+             nombre: document.getElementById('event-name').value,
+-            ponente: document.getElementById('event-ponente').value.trim() || 'Pendiente',
++            ponente: document.getElementById('event-ponente') ? document.getElementById('event-ponente').value.trim() : 'Pendiente',
+             responsable: Array.from(document.querySelectorAll('input[name="responsable"]:checked')).map(cb => cb.value).join(', '),
+             descripcion_evento: descText,
+             is_public: document.getElementById('event-is-public').checked,
+@@ -1509,7 +1551,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                 try { localStorage.removeItem('draft_event_form'); } catch (e) { }
+ 
+                 try {
+-                    // Removed old webhook code because it's now handled by syncToGoogleSheets 
++                    // Removed old webhook code because it's now handled by syncToGoogleSheets
+                     // which is called above after inserting/updating.
+                 } catch (e) {
+                     console.error("Error procesando autoguardado a sheets:", e);
+@@ -1556,10 +1598,47 @@ document.addEventListener('DOMContentLoaded', () => {
+                 { id: 'aceptado_ponente', label: '┬┐Ha aceptado el ponente?' }
+             ]
+         },
+-        { id: 2, label: 'Formalizado', req: 'Se debe crear formulario propio para registro, comunicar elaboraci├│n material o temario' },
+-        { id: 3, label: 'Comunicado', req: 'Se debe llenar el formulario de Marca y enviar por correo', actionUrl: 'https://docs.google.com/forms/d/e/1FAIpQLSew6aEIbaWAaYvjXYYY0gxqmAH0g6377nuOEx1Bx5su1j_M_A/viewform', actionLabel: 'Ir al Formulario' },
+-        { id: 4, label: 'Difundido', req: 'Se debe difundir a trav├®s de redes sociales / Whatsapp (Marca tambi├®n debe hacerlo)' },
+-        { id: 5, label: 'Preparado', req: 'Se deben terminar los materiales para el evento', redirect: 'comunicacion' },
++        {
++            id: 2,
++            label: 'Formalizado',
++            req: [
++                { id: 'borrador_com', label: 'Borrador de Comunicaci├│n', type: 'action_draft' },
++                { id: 'form_oficial', label: 'Llenar Formulario Oficial de Registro', type: 'action_link', target: 'https://docs.google.com/forms/d/e/1FAIpQLSew6aEIbaWAaYvjXYYY0gxqmAH0g6377nuOEx1Bx5su1j_M_A/viewform' },
++                { id: 'check_form_registro', label: '┬┐Haz llenado el formulario oficial de registro?' },
++                { id: 'check_correo_conf', label: '┬┐Has recibido la confirmaci├│n por correo de "Solicitudes de Comunicaci├│n CERTUS"?' }
++            ]
++        },
++        {
++            id: 3,
++            label: 'Comunicado',
++            req: [
++                { id: 'prog_zoom_meet', label: '┬┐Has programado el evento en zoom o meet?', type: 'action_input_link', placeholder: 'Pega el link de la reuni├│n aqu├¡' },
++                { id: 'solicitado_foto', label: '┬┐Haz solicitado la foto al ponente?' },
++                { id: 'cargar_foto', label: 'Subir foto del ponente', type: 'action_upload_image' },
++                { id: 'indicado_preparar', label: '┬┐Haz indicado al ponente que vaya preparando el evento?' }
++            ]
++        },
++        {
++            id: 4,
++            label: 'Difundido',
++            req: [
++                { id: 'req_com_foto', label: '┬┐El ├írea de comunicaciones te ha requerido por correo electronico la foto del ponente y le has enviado la foto?' },
++                { id: 'descargar_foto', label: 'Descargar foto del ponente', type: 'action_download_image' },
++                { id: 'marca_revision', label: '┬┐Marca te ha solicitado que revises el texto comunicacional y/o dise├▒o de piezas publicitarias?' },
++                { id: 'comunicado_delegados', label: '┬┐Haz comunicado a los delegados sobre el evento?' },
++                { id: 'borrador_invitacion', label: 'Borrador de Invitaci├│n', type: 'action_draft_invite' }
++            ]
++        },
++        {
++            id: 5,
++            label: 'Preparado',
++            req: [
++                { id: 'elaborado_material', label: '┬┐El ponente ha terminado de elaborar su material del evento?' },
++                { id: 'cargar_material', label: 'Subir material del evento (Un d├¡a antes)', type: 'action_upload_file' },
++                { id: 'compartido_recordatorio', label: '┬┐Haz compartido a los participantes del evento el recordatorio y/o link de reuni├│n?' },
++                { id: 'borrador_recordatorio', label: 'Generar Borrador de Recordatorio', type: 'action_draft_reminder' }
++            ]
++        },
+         { id: 6, label: 'Realizado', req: 'Se debe desarrollar el evento en las fechas programadas' },
+         { id: 7, label: 'Concluido', req: 'Se debe entregar constancias y elaborar informe final', redirect: 'generacion' }
+     ];
+@@ -1578,13 +1657,19 @@ document.addEventListener('DOMContentLoaded', () => {
+         const btnAdvance = document.getElementById('btn-advance-status');
+         const btnRetroceder = document.getElementById('btn-retroceder-status');
+ 
++        // Status Badges (Calcular antes para usar nextStep)
++        const currentStep = parseInt(eventData.status) || 0;
++        const nextStep = currentStep + 1;
++
+         // Populate Info
+         let ponenteHtml = '';
+-        if (!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') {
++        if ((!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') && nextStep >= 2) {
+             ponenteHtml = `
+                 <div style="margin-top: 1rem; padding: 0.5rem; background: rgba(245, 158, 11, 0.1); border-left: 3px solid #f59e0b; border-radius: 4px;">
+                     <label style="color:var(--text-muted); font-size:0.85rem; font-weight: bold;">Asignar Ponente (Requerido para avanzar):</label>
+-                    <input type="text" id="status-ponente-input" class="input-modern small" placeholder="Nombre completo del ponente" style="width:100%; margin-top:0.3rem;" required>
++                    <select id="status-ponente-input" class="input-modern" style="width:100%; margin-top:0.3rem;" required>
++                        <!-- Se llenar├í clonando las opciones de BD -->
++                    </select>
+                 </div>
+             `;
+         } else {
+@@ -1592,10 +1677,32 @@ document.addEventListener('DOMContentLoaded', () => {
+         }
+         infoDiv.innerHTML = `<h3>${eventData.nombre}</h3><p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>${ponenteHtml}`;
+ 
+-        // Status Badges
+-        const currentStep = parseInt(eventData.status) || 0;
+-        const nextStep = currentStep + 1;
++        // Initialize Select2 array logic
++        if ((!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') && nextStep >= 2) {
++            const selectTarget = document.getElementById('status-ponente-input');
++            const selectSource = document.getElementById('event-ponente');
++
++            if (selectTarget && selectSource) {
++                // Clonar las opciones ya cargadas de la BD
++                selectTarget.innerHTML = selectSource.innerHTML;
++
++                // Inicializar Select2
++                if ($.fn.select2) {
++                    $('#status-ponente-input').select2({
++                        placeholder: "Seleccione un ponente...",
++                        width: '100%',
++                        dropdownParent: $('#status-modal')
++                    });
++                }
++            }
++        }
+ 
++        // Generar requerimientos din├ímico
++        reqList.innerHTML = '';
++        btnAdvance.disabled = false; // Siempre activo para mostrar advertencia
++        let isStepCompletable = false;
++
++        // Determinar etiquetas de avance
+         currentBadge.className = `event-status status-${currentStep}`;
+         currentBadge.textContent = `${currentStep}/7 ${getStatusText(currentStep)}`;
+ 
+@@ -1609,11 +1716,6 @@ document.addEventListener('DOMContentLoaded', () => {
+             btnAdvance.style.display = 'none';
+         }
+ 
+-        // Generate Requirements for NEXT step
+-        reqList.innerHTML = '';
+-        btnAdvance.disabled = false; // Siempre activo para mostrar advertencia
+-        let isStepCompletable = false;
+-
+         if (nextStep <= 7) {
+             const stepConfig = STATUS_FLOW.find(s => s.id === currentStep); // Requirements to *leave* current or *enter* next? Assuming requirements to complete current -> next.
+             // User description says: "1/7 Planificado ... Req foto". "3/7 Comunicado ... se debe ir al enlace".
+@@ -1628,20 +1730,25 @@ document.addEventListener('DOMContentLoaded', () => {
+                     let reqData = {};
+                     try {
+                         reqData = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
++                        window.currentEventRequisitos = reqData;
+                     } catch (e) { }
+ 
+                     const evaluateAdvanceButton = () => {
+                         let ok = true;
+                         configForCurrent.req.forEach(r => {
+-                            if (reqData[r.id] !== true) ok = false;
+-                        });
+-
+-                        // Extra validation for Step 1 (Planificado): Require 'Ponente'
+-                        if (currentStep === 1) {
+-                            if (!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') {
+-                                ok = false;
++                            if (r.type === 'action_input_link' || r.type === 'action_upload_image' || r.type === 'action_upload_file') {
++                                if (r.id === 'prog_zoom_meet' && eventData.modalidad === 'Presencial') {
++                                    // Optional for presencial
++                                } else if (typeof reqData[r.id] !== 'string' || reqData[r.id].trim() === '') {
++                                    ok = false;
++                                }
++                            } else if (r.type !== 'action_drive' && r.type !== 'action_draft' && r.type !== 'action_link' && r.type !== 'action_download_image' && r.type !== 'action_draft_invite' && r.type !== 'action_draft_reminder') {
++                                // Default checkbox logic
++                                if (reqData[r.id] !== true) ok = false;
++                            } else if (r.type === 'action_drive') {
++                                if (!reqData.folder_url && reqData[r.id] !== true) ok = false;
+                             }
+-                        }
++                        });
+ 
+                         isStepCompletable = ok;
+                     };
+@@ -1667,23 +1774,669 @@ document.addEventListener('DOMContentLoaded', () => {
+                         li.style.padding = '12px 0';
+                         li.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+ 
+-                        // Soportar tres estados: true, false, y undefined
+-                        const val = reqData[r.id];
++                        // --- SPECIAL LOGIC FOR ACTION_INPUT_LINK (Text Input + Save Button) ---
++                        if (r.type === 'action_input_link') {
++                            const savedValue = reqData[r.id];
++                            const linkIsSaved = typeof savedValue === 'string' && savedValue.trim().length > 0;
++
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                    <div style="margin-top: 5px; display: flex; gap: 8px;">
++                                        <input type="text" id="input-link-${r.id}" placeholder="${r.placeholder}" value="${linkIsSaved ? savedValue : ''}" style="flex: 1; padding: 0.4rem; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 0.85rem; outline: none;">
++                                        <button class="btn-secondary" id="btn-save-link-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                            <i class="ph ph-floppy-disk"></i> Guardar
++                                        </button>
++                                    </div>
++                                </div>
++                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                    ${linkIsSaved ? '<span style="color: #22c55e; font-size: 1.5rem;"><i class="ph ph-check-circle"></i></span>' : '<span style="color: #64748b; font-size: 1.5rem;"><i class="ph ph-circle"></i></span>'}
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            li.querySelector(`#btn-save-link-${r.id}`).addEventListener('click', async () => {
++                                const inputVal = document.getElementById(`input-link-${r.id}`).value.trim();
++                                if (!inputVal) {
++                                    Swal.fire({ title: 'Aviso', text: 'Por favor, ingresa un enlace antes de guardar.', icon: 'warning', target: document.getElementById('status-modal') });
++                                    return;
++                                }
++
++                                const btn = li.querySelector(`#btn-save-link-${r.id}`);
++                                btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Guardando...';
++                                btn.disabled = true;
++
++                                reqData[r.id] = inputVal;
++                                await updateReqsInDB(reqData);
++
++                                // Refresh to show checkmark
++                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                            });
++
++                            // Evaluate completion: string length > 0
++                            if (!linkIsSaved) isStepCompletable = false;
++
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_UPLOAD_IMAGE (File Upload) ---
++                        else if (r.type === 'action_upload_image') {
++                            const isUploaded = reqData[r.id] === true || typeof reqData[r.id] === 'string'; // true if done, or url
++
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div>
++                                <div style="display: flex; gap: 10px; align-items: center; user-select: none;">
++                                    ${isUploaded ?
++                                    `<span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 10px;">IMAGEN SUBIDA</span>`
++                                    :
++                                    `<input type="file" id="file-upload-${r.id}" accept="image/*" style="display: none;">
++                                         <button class="btn-primary" onclick="document.getElementById('file-upload-${r.id}').click()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                            <i class="ph ph-upload-simple"></i> Seleccionar
++                                         </button>
++                                         <button class="btn-secondary" id="btn-upload-${r.id}" style="display:none; padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; align-items:center; gap: 0.4rem;">
++                                            <i class="ph ph-cloud-arrow-up"></i> Guardar
++                                         </button>`
++                                }
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            if (!isUploaded) {
++                                const fileInput = document.getElementById(`file-upload-${r.id}`);
++                                const btnSelect = li.querySelector('.btn-primary');
++                                const btnUpload = document.getElementById(`btn-upload-${r.id}`);
++
++                                fileInput.addEventListener('change', () => {
++                                    if (fileInput.files.length > 0) {
++                                        const file = fileInput.files[0];
++                                        btnSelect.innerHTML = `<i class="ph ph-image"></i> ${file.name.substring(0, 15)}...`;
++                                        btnSelect.style.background = '#475569';
++                                        btnUpload.style.display = 'inline-flex';
++                                    }
++                                });
++
++                                btnUpload.addEventListener('click', async () => {
++                                    const file = fileInput.files[0];
++                                    if (!file) return;
++
++                                    btnUpload.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Subiendo...';
++                                    btnUpload.disabled = true;
++                                    btnSelect.style.display = 'none';
++
++                                    try {
++                                        const storedFolderUrl = (window.currentEventRequisitos && window.currentEventRequisitos.folder_url) || '';
++                                        if (!storedFolderUrl) {
++                                            Swal.fire({ title: 'Uy!', text: 'Falta la carpeta del evento. Retrocede a "Planificado" para crearla.', icon: 'warning', target: document.getElementById('status-modal') });
++                                            btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
++                                            btnUpload.disabled = false;
++                                            btnSelect.style.display = 'inline-flex';
++                                            return;
++                                        }
++
++                                        const reader = new FileReader();
++                                        reader.onload = async function () {
++                                            const base64Data = reader.result.split(',')[1];
++                                            const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
++                                                method: 'POST', mode: 'cors',
++                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
++                                                body: JSON.stringify({
++                                                    action: 'subir_foto_ponente',
++                                                    data: {
++                                                        folder_url: storedFolderUrl,
++                                                        file_name: file.name,
++                                                        mime_type: file.type,
++                                                        file_content: base64Data
++                                                    }
++                                                })
++                                            });
++                                            const result = await response.json();
++                                            if (result.status === "ok") {
++                                                reqData[r.id] = result.file_url || true;
++                                                await updateReqsInDB(reqData);
++                                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                                            } else {
++                                                throw new Error("GAS Script response failed: " + result.message);
++                                            }
++                                        };
++                                        reader.readAsDataURL(file);
++
++                                    } catch (err) {
++                                        console.error(err);
++                                        Swal.fire('Error', 'Hubo un error subiendo la foto a Drive.', 'error');
++                                        btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
++                                        btnUpload.disabled = false;
++                                        btnSelect.style.display = 'inline-flex';
++                                    }
++                                });
++
++                                // Evaluate completion: string length > 0 or true
++                                if (!isUploaded) isStepCompletable = false;
++                            }
++
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_DOWNLOAD_IMAGE ---
++                        else if (r.type === 'action_download_image') {
++                            const fotoUrl = window.currentEventRequisitos && window.currentEventRequisitos['cargar_foto'];
++                            const isDisabled = typeof fotoUrl !== 'string' || !fotoUrl.startsWith('http');
++
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div>
++                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                    <button class="btn-primary" id="btn-dw-${r.id}" ${isDisabled ? 'disabled' : ''} style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; ${isDisabled ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
++                                        <i class="ph ph-download-simple"></i> Ver / Descargar
++                                    </button>
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            if (!isDisabled) {
++                                li.querySelector(`#btn-dw-${r.id}`).addEventListener('click', () => {
++                                    window.open(fotoUrl, '_blank');
++                                    reqData[r.id] = true;
++                                    updateReqsInDB(reqData);
++                                    window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                                });
++                            }
++                            // Solo es obligatorio si no se ha validado (se valida al hacer clic)
++                            if (reqData[r.id] !== true) isStepCompletable = false;
++
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_DRAFT_INVITE ---
++                        else if (r.type === 'action_draft_invite') {
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div>
++                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                    <button class="btn-secondary" id="btn-dinv-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                        <i class="ph ph-envelope-simple-open"></i> Generar Invitaci├│n
++                                    </button>
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            li.querySelector(`#btn-dinv-${r.id}`).addEventListener('click', () => {
++                                let formLinkTexto = "[Link no encontrado, actualiza la etapa 1]";
++                                try {
++                                    const reqObj = window.currentEventRequisitos || {};
++                                    if (reqObj.form_inscripcion_url) {
++                                        formLinkTexto = reqObj.form_inscripcion_url;
++                                    }
++                                } catch (e) { }
++
++                                let fechasFormateadas = "[Fecha no disponible]";
++                                try {
++                                    const hStr = eventData.horario || '[]';
++                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
++                                    const fechasArr = [];
++                                    for (const h of hrs) {
++                                        if (h.fecha) {
++                                            const [yyyy, mm, dd] = h.fecha.split('-');
++                                            let ft = `${dd}/${mm}/${yyyy}`;
++                                            if (h.inicio && h.fin) ft += ` desde las ${h.inicio} hasta las ${h.fin}`;
++                                            else if (h.inicio) ft += ` desde las ${h.inicio}`;
++                                            fechasArr.push(ft);
++                                        }
++                                    }
++                                    if (fechasArr.length > 0) fechasFormateadas = fechasArr.join(', ');
++                                } catch (e) { }
++
++                                const draftText = `Estimados delegados,\n\nLos invitamos cordialmente a participar y difundir el evento ${eventData.tipo}: "${eventData.nombre}" que se realizar├í en las fechas: ${fechasFormateadas}.\n\nPor favor, reg├¡strense en el siguiente enlace de inscripci├│n:\n${formLinkTexto}\n\n┬íLos esperamos!`;
++
++                                Swal.fire({
++                                    title: 'Invitaci├│n para Delegados',
++                                    html: `
++                                        <textarea id="invite-draft-text" readonly style="width: 100%; height: 150px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none; box-sizing: border-box;">${draftText}</textarea>
++                                        <button onclick="navigator.clipboard.writeText(document.getElementById('invite-draft-text').value); Swal.fire('Copiado', 'Texto copiado al portapapeles', 'success');" class="btn-primary" style="margin-top: 15px; padding: 0.6rem 1.2rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; cursor:pointer;">
++                                            <i class="ph ph-copy"></i> Copiar Texto
++                                        </button>
++                                    `,
++                                    showConfirmButton: false,
++                                    showCloseButton: true,
++                                    width: '600px',
++                                    customClass: { popup: 'swal-dark-layout' }
++                                });
++
++                                reqData[r.id] = true;
++                                updateReqsInDB(reqData);
++                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                            });
++
++                            // Se valida al hacer clic
++                            if (reqData[r.id] !== true) isStepCompletable = false;
++
++                            return;
++                        }
++                        // --- SPECIAL LOGIC FOR ACTION_UPLOAD_FILE (Any File Upload) ---
++                        if (r.type === 'action_upload_file') {
++                            const isUploaded = reqData[r.id] === true || typeof reqData[r.id] === 'string'; // true if done, or url
++
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div>
++                                <div style="display: flex; gap: 10px; align-items: center; user-select: none;">
++                                    ${isUploaded ?
++                                    `<span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 10px;">ARCHIVO SUBIDO</span>`
++                                    :
++                                    `<input type="file" id="file-upload-${r.id}" accept="*" style="display: none;">
++                                         <button class="btn-primary" onclick="document.getElementById('file-upload-${r.id}').click()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                            <i class="ph ph-upload-simple"></i> Seleccionar
++                                         </button>
++                                         <button class="btn-secondary" id="btn-upload-${r.id}" style="display:none; padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; align-items:center; gap: 0.4rem;">
++                                            <i class="ph ph-cloud-arrow-up"></i> Guardar
++                                         </button>`
++                                }
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            if (!isUploaded) {
++                                const fileInput = document.getElementById(`file-upload-${r.id}`);
++                                const btnSelect = li.querySelector('.btn-primary');
++                                const btnUpload = document.getElementById(`btn-upload-${r.id}`);
++
++                                fileInput.addEventListener('change', () => {
++                                    if (fileInput.files.length > 0) {
++                                        const file = fileInput.files[0];
++                                        btnSelect.innerHTML = `<i class="ph ph-file"></i> ${file.name.substring(0, 15)}...`;
++                                        btnSelect.style.background = '#475569';
++                                        btnUpload.style.display = 'inline-flex';
++                                    }
++                                });
++
++                                btnUpload.addEventListener('click', async () => {
++                                    const file = fileInput.files[0];
++                                    if (!file) return;
++
++                                    btnUpload.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Subiendo...';
++                                    btnUpload.disabled = true;
++                                    btnSelect.style.display = 'none';
++
++                                    try {
++                                        const storedFolderUrl = (window.currentEventRequisitos && window.currentEventRequisitos.folder_url) || '';
++                                        if (!storedFolderUrl) {
++                                            Swal.fire({ title: 'Uy!', text: 'Falta la carpeta del evento.', icon: 'warning', target: document.getElementById('status-modal') });
++                                            btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
++                                            btnUpload.disabled = false;
++                                            btnSelect.style.display = 'inline-flex';
++                                            return;
++                                        }
++
++                                        const reader = new FileReader();
++                                        reader.onload = async function () {
++                                            const base64Data = reader.result.split(',')[1];
++                                            const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
++                                                method: 'POST', mode: 'cors',
++                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
++                                                body: JSON.stringify({
++                                                    action: 'subir_foto_ponente', // Re-using GAS upload handler
++                                                    data: {
++                                                        folder_url: storedFolderUrl,
++                                                        file_name: file.name,
++                                                        mime_type: file.type,
++                                                        file_content: base64Data
++                                                    }
++                                                })
++                                            });
++                                            const result = await response.json();
++                                            if (result.status === "ok") {
++                                                reqData[r.id] = result.file_url || true;
++                                                await updateReqsInDB(reqData);
++                                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                                            } else {
++                                                throw new Error("GAS Script response failed");
++                                            }
++                                        };
++                                        reader.readAsDataURL(file);
++                                    } catch (err) {
++                                        Swal.fire('Error', 'Hubo un error subiendo el archivo.', 'error');
++                                        btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
++                                        btnUpload.disabled = false;
++                                        btnSelect.style.display = 'inline-flex';
++                                    }
++                                });
++
++                                if (!isUploaded) isStepCompletable = false;
++                            }
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_DRAFT_REMINDER ---
++                        else if (r.type === 'action_draft_reminder') {
++                            li.innerHTML = `
++                                <div style="flex:1; padding-right: 15px;">
++                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div>
++                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                    <button class="btn-secondary" id="btn-drem-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                        <i class="ph ph-envelope-simple"></i> Generar Borrador
++                                    </button>
++                                </div>
++                            `;
++                            reqList.appendChild(li);
++
++                            li.querySelector(`#btn-drem-${r.id}`).addEventListener('click', () => {
++                                let fechasFormateadas = "[Fecha no disponible]";
++                                try {
++                                    const hStr = eventData.horario || '[]';
++                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
++                                    const fechasArr = [];
++                                    for (const h of hrs) {
++                                        if (h.fecha) {
++                                            const [yyyy, mm, dd] = h.fecha.split('-');
++                                            let ft = `${dd}/${mm}/${yyyy}`;
++                                            if (h.inicio && h.fin) ft += ` desde las ${h.inicio} hasta las ${h.fin}`;
++                                            else if (h.inicio) ft += ` desde las ${h.inicio}`;
++                                            fechasArr.push(ft);
++                                        }
++                                    }
++                                    if (fechasArr.length > 0) fechasFormateadas = fechasArr.join(', ');
++                                } catch (e) { }
++
++                                const reqObj = window.currentEventRequisitos || {};
++                                const linkReunionText = (reqObj.prog_zoom_meet && reqObj.prog_zoom_meet.trim().length > 0) ? `\nEnlace de acceso a la reuni├│n virtual: ${reqObj.prog_zoom_meet}\n` : (eventData.modalidad === 'Presencial' ? '' : '\n[No se especific├│ enlace de reuni├│n]\n');
++
++                                const draftText = `Estimados participantes,\n\nLes recordamos que est├ín inscritos en el evento ${eventData.tipo} "${eventData.nombre}", el cual se llevar├í a cabo en las siguientes fechas:\n${fechasFormateadas}\n${linkReunionText}\nPor favor, recuerden ser puntuales.\n\n┬íLos esperamos!`;
++
++                                Swal.fire({
++                                    title: 'Borrador de Recordatorio',
++                                    html: `
++                                        <div style="text-align: left; margin-bottom: 15px;">
++                                            <label style="color: #cbd5e1; display: block; margin-bottom: 5px;">Asunto del correo:</label>
++                                            <input type="text" id="rem-draft-subject" readonly value="Recordatorio del evento: ${eventData.nombre}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: white; display: block;">
++                                        </div>
++                                        <div style="text-align: left;">
++                                            <label style="color: #cbd5e1; display: block; margin-bottom: 5px;">Cuerpo del mensaje:</label>
++                                            <textarea id="rem-draft-text" readonly style="width: 100%; height: 160px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none; box-sizing: border-box;">${draftText}</textarea>
++                                        </div>
++                                        <button onclick="navigator.clipboard.writeText(document.getElementById('rem-draft-subject').value + '\\n\\n' + document.getElementById('rem-draft-text').value); Swal.fire('Copiado', 'Texto y asunto copiados al portapapeles', 'success');" class="btn-primary" style="margin-top: 15px; padding: 0.6rem 1.2rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; cursor:pointer;">
++                                            <i class="ph ph-copy"></i> Copiar Todo
++                                        </button>
++                                    `,
++                                    showConfirmButton: false,
++                                    showCloseButton: true,
++                                    width: '600px',
++                                    customClass: { popup: 'swal-dark-layout' }
++                                });
++
++                                reqData[r.id] = true;
++                                updateReqsInDB(reqData);
++                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
++                            });
++
++                            if (reqData[r.id] !== true) isStepCompletable = false;
++
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_LINK (Direct Button) ---
++                        if (r.type === 'action_link') {
++                            li.innerHTML = `
++                                                < div style = "flex:1; padding-right: 15px;" >
++                                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div >
++                                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                                    <a href="${r.target}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; text-decoration: none;">
++                                                        Abrir Formulario <i class="ph ph-arrow-square-out"></i>
++                                                    </a>
++                                                </div>
++                                            `;
++                            reqList.appendChild(li);
++
++                            // Marcarlo como completado internamente si deseamos, o dejar que el usuario use los checkbox abajo para validar.
++                            // Dejamos que los checkbox sean la validaci├│n real.
++                            reqData[r.id] = true;
++                            // updateReqsInDB no es super estricto aqu├¡ porque no bloquea avance por si solo.
++                            return;
++                        }
++
++                        // --- SPECIAL LOGIC FOR ACTION_DRAFT (Generate Text Popup) ---
++                        else if (r.type === 'action_draft') {
++                            li.innerHTML = `
++                                                < div style = "flex:1; padding-right: 15px;" >
++                                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div >
++                                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                                    <button class="btn-secondary" id="btn-draft-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
++                                                        <i class="ph ph-magic-wand"></i> Generar Borrador
++                                                    </button>
++                                                </div>
++                                            `;
++                            reqList.appendChild(li);
++
++                            li.querySelector(`#btn - draft - ${r.id} `).addEventListener('click', () => {
++                                // Extract phones mapping
++                                const phoneMap = {
++                                    'Eduardo': '973590390',
++                                    'Jorge': '949665939',
++                                    'Carlos': '977180768',
++                                    'Jos├®': '947616127',
++                                    'Luis': '991430872',
++                                    'Mirko': '971295157'
++                                };
++                                const emailMap = {
++                                    'Eduardo': 'emamanir@certus.edu.pe',
++                                    'Mirko': 'mnsanchez@certus.edu.pe',
++                                    'Jos├®': 'jramirezp@certus.edu.pe',
++                                    'Jorge': 'jdurand@gmail.com', // or jdurand@certus.edu.pe ? user said gmail
++                                    'Carlos': 'cybarram@certus.edu.pe',
++                                    'Luis': 'lcondors@certus.edu.pe'
++                                };
++
++                                let userPhone = '';
++                                let userEmail = '';
++                                if (eventData.responsable) {
++                                    // Pilla el primero
++                                    const firstResp = eventData.responsable.split(',')[0].trim();
++                                    userPhone = phoneMap[firstResp] || '';
++                                    userEmail = emailMap[firstResp] || '[Responsable (correo electr├│nico)]';
++                                }
++
++                                // Determinar Sede y Horario
++                                const sedesFormatted = eventData.sedes ? eventData.sedes : 'No asignada';
++                                let eventHorarioStr = '[d├¡a o d├¡as del evento] y hora';
++                                let plazoEntregaStr = '[calcular...]';
++                                try {
++                                    const hStr = eventData.horario || '[]';
++                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
++                                    if (hrs.length > 0 && hrs[0].fecha) {
++                                        let rawDate = hrs[0].fecha;
++
++                                        // Calculate plazo (rawDate - 7 days)
++                                        let dateObj = null;
++                                        if (rawDate.includes('-') && rawDate.split('-')[0].length === 4) {
++                                            const p = rawDate.split('-');
++                                            dateObj = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
++                                        } else if (rawDate.includes('/')) {
++                                            const p = rawDate.split('/');
++                                            dateObj = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
++                                        }
++
++                                        if (dateObj && !isNaN(dateObj)) {
++                                            dateObj.setDate(dateObj.getDate() - 7);
++                                            const pd = String(dateObj.getDate()).padStart(2, '0');
++                                            const pm = String(dateObj.getMonth() + 1).padStart(2, '0');
++                                            const py = dateObj.getFullYear();
++                                            plazoEntregaStr = `${pd} /${pm}/${py} `;
++                                        }
++
++                                        // Format date YYYY-MM-DD to "DD de Mes del YYYY"
++                                        let dateStr = rawDate;
++                                        if (rawDate.includes('-') && rawDate.split('-')[0].length === 4) {
++                                            const parts = rawDate.split('-');
++                                            const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
++                                            const dayNum = parseInt(parts[2], 10);
++                                            const monthNum = parseInt(parts[1], 10);
++                                            const yearNum = parts[0];
++                                            if (monthNum >= 1 && monthNum <= 12) {
++                                                dateStr = `${dayNum} de ${months[monthNum - 1]} del ${yearNum} `;
++                                            }
++                                        }
++                                        eventHorarioStr = `${dateStr} desde las ${hrs[0].inicio || ''} hasta las ${hrs[0].fin || ''} `;
++                                    }
++                                } catch (e) { }
++
++                                const modalModeText = eventData.modalidad === 'Virtual' ? 'a trav├®s de Zoom' : (eventData.modalidad === 'Presencial' ? `en sede ${sedesFormatted} ` : `a trav├®s de Zoom y en sede ${sedesFormatted} `);
++
++                                let formLinkTexto = `[Link del formulario INSCRIPCION AL TALLER VIRTUAL: "${eventData.nombre}" creado en la carpeta]`;
++                                try {
++                                    // El draft se genera en la etapa 2, pero la URL se guard├│ globalmente en requisitos
++                                    const reqObj = window.currentEventRequisitos || {};
++                                    if (reqObj.form_inscripcion_url) {
++                                        formLinkTexto = reqObj.form_inscripcion_url;
++                                    } else {
++                                        const reqDB = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
++                                        if (reqDB.form_inscripcion_url) {
++                                            formLinkTexto = reqDB.form_inscripcion_url;
++                                        }
++                                    }
++                                } catch (e) { }
++
++                                const draftFields = [
++                                    { id: 'draft-f1', label: 'Correo de Jefe Directo', value: 'lhurtadoo@certus.edu.pe', isArea: false },
++                                    { id: 'draft-f2', label: 'N├║mero de contacto', value: userPhone, isArea: false },
++                                    { id: 'draft-f3', label: 'Nombre del evento', value: eventData.nombre || '', isArea: false },
++                                    { id: 'draft-f4', label: '├ürea', value: 'Direcci├│n Acad├®mica', isArea: false },
++                                    { id: 'draft-f5', label: 'P├║blico Objetivo', value: eventData.audiencia || 'P├║blico en General', isArea: false },
++                                    { id: 'draft-f6', label: 'Vertical involucrada', value: 'Finanzas', isArea: false },
++                                    { id: 'draft-f7', label: 'Tipo de difusi├│n', value: 'Comunicaci├│n Interna / Comunicaci├│n Digital', isArea: false },
++                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[p├║blico objetivo]'} a participar en el evento tipo ${eventData.tipo} "${eventData.nombre}" que se realizar├í el ${eventHorarioStr} ${modalModeText}, con inscripci├│n previa.Incluye constancia de participaci├│n.Ponente: ${eventData.ponente} `, isArea: true },
++                                    { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: formLinkTexto, isArea: false },
++                                    { id: 'draft-f8_2', label: 'Contacto', value: `Pueden escribir a ${userEmail} o enviar un whatsapp al ${userPhone || '[numero telefonico]'} `, isArea: false },
++                                    { id: 'draft-f9', label: 'Plazo de entrega del pedido', value: plazoEntregaStr, isArea: false },
++                                    { id: 'draft-f10', label: 'Urgencia del Pedido', value: 'No', isArea: false }
++                                ];
++
++                                let htmlGrid = '<div style="display: flex; flex-direction: column; gap: 1rem; text-align: left; max-height: 60vh; overflow-y: auto; overflow-x: hidden; padding-right: 15px; width: 100%; box-sizing: border-box;">';
++                                draftFields.forEach(f => {
++                                    let btnExtra = '';
++                                    if (f.id === 'draft-f8_1') {
++                                        // Extra logic to fetch link if missing
++                                        const storedFolderUrl = (window.currentEventRequisitos && window.currentEventRequisitos.folder_url) || '';
++                                        btnExtra = `< button onclick = "window.fetchDraftFormLink(this, '${storedFolderUrl}', ${eventData.id})" class="btn-fetch-link" style = "width: 38px; height: 38px; min-width: 38px; border-radius: 6px; background: #3b82f6; border: 1px solid #2563eb; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; padding: 0; box-sizing: border-box; margin-right: 5px;" title = "Obtener link directo de Drive" onmouseover = "this.style.background='#2563eb';" onmouseout = "this.style.background='#3b82f6';" >
++                                                <i class="ph ph-arrows-clockwise" style="font-size: 1.2rem; pointer-events: none;"></i>
++                                        </button > `;
++                                    }
++
++                                    htmlGrid += `
++                                                < div style = "width: 100%; box-sizing: border-box;" >
++                                            <label style="font-size: 0.85rem; font-weight: bold; color: #475569; margin-bottom: 0.3rem; display: block;">${f.label}</label>
++                                            <div style="display: flex; gap: 8px; align-items: flex-start; width: 100%; box-sizing: border-box;">
++                                                ${f.isArea ?
++                                            `<textarea id="${f.id}" readonly style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: vertical; min-height: 100px; font-family: inherit; box-sizing: border-box; outline: none;">${f.value}</textarea>` :
++                                            `<input type="text" id="${f.id}" readonly value='${f.value}' style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; font-family: inherit; box-sizing: border-box; outline: none;">`
++                                        }
++                                                ${btnExtra}
++                                                <button class="btn-copy-field" data-target="${f.id}" style="width: 38px; height: 38px; min-width: 38px; border-radius: 6px; background: #e2e8f0; border: 1px solid #cbd5e1; color: #475569; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; padding: 0; box-sizing: border-box;" title="Copiar este campo" onmouseover="this.style.background='#cbd5e1'; this.style.color='#1e293b';" onmouseout="this.style.background='#e2e8f0'; this.style.color='#475569';">
++                                                    <i class="ph ph-copy" style="font-size: 1.2rem; pointer-events: none;"></i>
++                                                </button>
++                                            </div>
++                                        </div >
++                                                `;
++                                });
++                                htmlGrid += '</div>';
++
++                                // Define asynchronous fetcher for the popup button
++                                window.fetchDraftFormLink = async function (btnNode, folderUrl, eventId) {
++                                    if (!folderUrl) {
++                                        Swal.fire({ title: 'Uy!', text: 'Primero debes crear la carpeta del evento en el estado "Planificado".', icon: 'warning', target: document.getElementById('status-modal') });
++                                        return;
++                                    }
++                                    const icon = btnNode.querySelector('i');
++                                    icon.classList.add('ph-spin');
++                                    btnNode.disabled = true;
++
++                                    try {
++                                        const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
++                                            method: 'POST', mode: 'cors',
++                                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
++                                            body: JSON.stringify({ action: 'verificar_carpeta_evento', data: { folder_url: folderUrl } })
++                                        });
++                                        const result = await response.json();
++                                        if (result.status === "ok" && result.form_inscripcion_url) {
++                                            // Update input UI
++                                            const inputEl = document.getElementById('draft-f8_1');
++                                            if (inputEl) inputEl.value = result.form_inscripcion_url;
++
++                                            // Save silently to DB to persist
++                                            let currentReqs = window.currentEventRequisitos || {};
++                                            currentReqs.form_inscripcion_url = result.form_inscripcion_url;
++
++                                            await supabase.from('eventos').update({ requisitos: currentReqs }).eq('id', eventId);
++                                        } else {
++                                            Swal.fire({ title: 'Aviso', text: 'No se encontr├│ un Google Form dentro de la carpeta.', icon: 'info', target: document.getElementById('status-modal') });
++                                        }
++                                    } catch (e) {
++                                        console.error(e);
++                                    } finally {
++                                        icon.classList.remove('ph-spin');
++                                        btnNode.disabled = false;
++                                    }
++                                };
++
++                                Swal.fire({
++                                    title: 'Borrador Generado',
++                                    html: htmlGrid,
++                                    width: '800px',
++                                    showCloseButton: true,
++                                    showConfirmButton: false,
++                                    showCancelButton: true,
++                                    cancelButtonText: 'Cerrar',
++                                    cancelButtonColor: '#64748b',
++                                    focusCancel: true,
++                                    didOpen: () => {
++                                        const popup = Swal.getPopup();
++                                        const copyBtns = popup.querySelectorAll('.btn-copy-field');
++                                        copyBtns.forEach(btn => {
++                                            btn.addEventListener('click', (e) => {
++                                                const targetId = e.currentTarget.getAttribute('data-target');
++                                                const inputEl = document.getElementById(targetId);
++                                                if (inputEl) {
++                                                    inputEl.select();
++                                                    navigator.clipboard.writeText(inputEl.value);
++
++                                                    // Visual feedback on button
++                                                    const icon = e.currentTarget.querySelector('i');
++                                                    icon.className = 'ph ph-check';
++                                                    icon.style.color = '#10b981';
++                                                    setTimeout(() => {
++                                                        icon.className = 'ph ph-copy';
++                                                        icon.style.color = '';
++                                                    }, 1500);
++                                                }
++                                            });
++                                        });
++                                    }
++                                });
++
++                                reqData[r.id] = true;
++                            });
++                            return;
++                        }
+ 
+                         // --- SPECIAL LOGIC FOR ACTION_DRIVE (CREATE FOLDER) ---
+-                        if (r.type === 'action_drive') {
++                        else if (r.type === 'action_drive') {
+                             const hasFolder = !!reqData.folder_url && !reqData.folder_url.includes("1nyN81gZicYLBW6RyEHb_wZmEQoyqutps");
+ 
+                             // Si ya tiene carpeta:
+                             if (hasFolder) {
+                                 li.innerHTML = `
+-                                    <div style="flex:1; padding-right: 15px;">
+-                                        <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+-                                    </div>
+-                                    <div style="display: flex; gap: 15px; align-items: center; user-select: none;" id="verify-drive-box-${r.id}">
+-                                        <span style="color: #64748b; font-size: 0.85rem;"><i class="ph ph-spinner ph-spin"></i> Verificando Drive...</span>
+-                                    </div>
+-                                `;
++                                                < div style = "flex:1; padding-right: 15px;" >
++                                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                    </div >
++                                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;" id="verify-drive-box-${r.id}">
++                                                    <span style="color: #64748b; font-size: 0.85rem;"><i class="ph ph-spinner ph-spin"></i> Verificando Drive...</span>
++                                                </div>
++                                            `;
+                                 reqList.appendChild(li);
+ 
+                                 // Async Verification
+@@ -1697,14 +2450,18 @@ document.addEventListener('DOMContentLoaded', () => {
+                                         });
+                                         const result = await response.json();
+ 
+-                                        const box = document.getElementById(`verify-drive-box-${r.id}`);
++                                        const box = document.getElementById(`verify - drive - box - ${r.id} `);
+                                         if (box) {
+                                             if (result.status === "ok" && result.exists === true) {
++                                                if (result.form_inscripcion_url && !reqData.form_inscripcion_url) {
++                                                    reqData.form_inscripcion_url = result.form_inscripcion_url;
++                                                }
+                                                 box.innerHTML = `
+-                                                    <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
++                                                < span style = "color: #10b981; font-weight: bold; font-size: 0.85rem;" > <i class="ph ph-check-circle"></i> CARPETA CREADA</span >
+                                                     <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
+-                                                `;
++                                            `;
+                                                 reqData[r.id] = true;
++                                                await updateReqsInDB(reqData); // Ensure URL saves even if already exist
+                                                 evaluateAdvanceButton(); // Allow advance
+                                             } else {
+                                                 // Folder was deleted in Drive. Revert state.
+@@ -1718,11 +2475,11 @@ document.addEventListener('DOMContentLoaded', () => {
+                                     } catch (e) {
+                                         console.error("Error verificando carpeta:", e);
+                                         // On network error just assume it's created to avoid blocking the user
+-                                        const box = document.getElementById(`verify-drive-box-${r.id}`);
++                                        const box = document.getElementById(`verify - drive - box - ${r.id} `);
+                                         if (box) {
+                                             box.innerHTML = `
+-                                                <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
+-                                                <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
++                                                < span style = "color: #10b981; font-weight: bold; font-size: 0.85rem;" > <i class="ph ph-check-circle"></i> CARPETA CREADA</span >
++                                                    <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
+                                             `;
+                                             reqData[r.id] = true;
+                                             evaluateAdvanceButton();
+@@ -1735,31 +2492,31 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+                             // Si NO tiene carpeta: Muestra el UI estandar pero pre-conectado a la acci├│n
+                             li.innerHTML = `
+-                                <div style="flex:1; padding-right: 15px;">
+-                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+-                                </div>
+-                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+-                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+-                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+-                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+-                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+-                                        </div>
+-                                    </label>
+-                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes" id="btn-create-drive-${r.id}">
+-                                        <span class="lbl-yes-txt" style="font-weight: 500;">S├¡</span>
+-                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+-                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+-                                        </div>
+-                                    </label>
+-                                </div>
+-                            `;
++                                                < div style = "flex:1; padding-right: 15px;" >
++                                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div >
++                                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
++                                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
++                                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
++                                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
++                                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
++                                                        </div>
++                                                    </label>
++                                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes" id="btn-create-drive-${r.id}">
++                                                        <span class="lbl-yes-txt" style="font-weight: 500;">S├¡</span>
++                                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
++                                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
++                                                        </div>
++                                                    </label>
++                                                </div>
++                                            `;
+                             reqList.appendChild(li);
+ 
+                             const lblNoTxt = li.querySelector('.lbl-no-txt');
+                             const boxNo = li.querySelector('.no-box');
+                             const noIcon = li.querySelector('.no-icon');
+                             const lblNoContainer = li.querySelector('.custom-lbl-no');
+-                            const btnCreateDrive = document.getElementById(`btn-create-drive-${r.id}`);
++                            const btnCreateDrive = document.getElementById(`btn - create - drive - ${r.id} `);
+ 
+                             // Estilo b├ísico para "No" o neutral
+                             const applyStylesDrive = (stateVal) => {
+@@ -1791,7 +2548,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+                                 // UI Loading
+                                 btnCreateDrive.style.pointerEvents = 'none';
+-                                btnCreateDrive.innerHTML = `<span style="color:#64748b; font-size:0.85rem;"><i class="ph ph-spinner ph-spin"></i> Creando...</span>`;
++                                btnCreateDrive.innerHTML = `< span style = "color:#64748b; font-size:0.85rem;" > <i class="ph ph-spinner ph-spin"></i> Creando...</span > `;
+                                 btnAdvance.disabled = true;
+ 
+                                 // Format Folder name: DD/MM Ponente Tipo
+@@ -1825,7 +2582,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                                 } catch (e) {
+                                     console.error("No se pudo parsear el horario para la fecha:", e);
+                                 }
+-                                const folderName = `${dayStr}/${monStr} ${eventData.nombre} ${eventData.tipo}`;
++                                const folderName = `${dayStr} / ${monStr} ${eventData.nombre} ${eventData.tipo}`;
+ 
+                                 let eventHorarioStr = "la fecha programada";
+                                 try {
+@@ -1846,6 +2603,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                                             action: 'crear_carpeta_evento', data: {
+                                                 folder_name: folderName,
+                                                 event_name: eventData.nombre || "",
++                                                event_tipo: eventData.tipo || "Evento",
+                                                 event_horario_str: eventHorarioStr
+                                             }
+                                         })
+@@ -1855,6 +2613,9 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+                                     if (result.status === "ok" && result.folder_url) {
+                                         reqData.folder_url = result.folder_url;
++                                        if (result.form_inscripcion_url) {
++                                            reqData.form_inscripcion_url = result.form_inscripcion_url;
++                                        }
+                                         reqData[r.id] = true;
+                                         await updateReqsInDB(reqData);
+ 
+@@ -1867,7 +2628,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+                                 } catch (err) {
+                                     console.error("Error solicitando creaci├│n de carpeta:", err);
+-                                    btnCreateDrive.innerHTML = `<span class="lbl-yes-txt" style="font-weight: 500;">S├¡</span>`;
++                                    btnCreateDrive.innerHTML = `< span class= "lbl-yes-txt" style = "font-weight: 500;" > S├¡</span > `;
+                                     btnCreateDrive.style.pointerEvents = 'auto';
+                                     applyStylesDrive(undefined);
+                                     Swal.fire('Error', 'No se pudo contactar con el servidor de Google Drive.', 'error');
+@@ -1878,9 +2639,9 @@ document.addEventListener('DOMContentLoaded', () => {
+                         } else {
+                             // --- NORMAL YES/NO CHECKBOXES ---
+                             li.innerHTML = `
+-                                <div style="flex:1; padding-right: 15px;">
+-                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+-                                </div>
++                            < div style = "flex:1; padding-right: 15px;" >
++                            <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
++                                </div >
+                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+                                         <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+@@ -1956,21 +2717,21 @@ document.addEventListener('DOMContentLoaded', () => {
+                     li.className = 'req-item';
+ 
+                     // Checkbox logic
+-                    let checkHtml = `<input type="checkbox" class="req-check" id="req-check-main">`;
+-                    let labelHtml = `<label for="req-check-main" class="req-label">${configForCurrent.req}</label>`;
++                    let checkHtml = `< input type = "checkbox" class= "req-check" id = "req-check-main" > `;
++                    let labelHtml = `< label for= "req-check-main" class= "req-label" > ${configForCurrent.req}</label > `;
+                     let actionHtml = '';
+ 
+                     // Specific Logic Step 3 (Form Link)
+                     if (currentStep === 3) {
+-                        actionHtml = `<a href="${configForCurrent.actionUrl}" target="_blank" class="req-link-btn">${configForCurrent.actionLabel} <i class="ph ph-arrow-square-out"></i></a>`;
++                        actionHtml = `< a href = "${configForCurrent.actionUrl}" target = "_blank" class="req-link-btn" > ${configForCurrent.actionLabel} <i class="ph ph-arrow-square-out"></i></a > `;
+                     }
+ 
+                     // Specific Logic Step 5 (Redirect Button - Layout only)
+                     if (currentStep === 5) {
+-                        actionHtml = `<button class="req-link-btn" onclick="document.querySelector('[data-target=\\'comunicacion\\']').click(); document.getElementById('status-modal').classList.remove('active');">Ir a Comunicaci├│n <i class="ph ph-arrow-right"></i></button>`;
++                        actionHtml = `< button class="req-link-btn" onclick = "document.querySelector('[data-target=\\'comunicacion\\']').click(); document.getElementById('status-modal').classList.remove('active');" > Ir a Comunicaci├│n < i class="ph ph-arrow-right" ></i ></button > `;
+                     }
+ 
+-                    li.innerHTML = `${checkHtml} <div style="flex:1">${labelHtml}</div> ${actionHtml}`;
++                    li.innerHTML = `${checkHtml} <div style="flex:1">${labelHtml}</div> ${actionHtml} `;
+                     reqList.appendChild(li);
+ 
+                     // Enable button on check
+@@ -1998,11 +2759,24 @@ document.addEventListener('DOMContentLoaded', () => {
+             const ponenteInput = document.getElementById('status-ponente-input');
+             let newPonente = null;
+             if (ponenteInput) {
+-                newPonente = ponenteInput.value.trim();
+-                if (!newPonente || newPonente.toLowerCase() === 'pendiente') {
+-                    Swal.fire('Atenci├│n', 'Debe asignar un ponente v├ílido para poder avanzar de estado.', 'warning');
++                newPonente = ponenteInput.value;
++                // Exigimos ponente solo si vamos al paso 2 (Formalizado) o m├ís adelante
++                if ((!newPonente || newPonente === 'Pendiente') && nextStep >= 2) {
++                    Swal.fire('Atenci├│n', 'Debe asignar un ponente v├ílido de la lista para poder avanzar de estado a partir de esta fase.', 'warning');
++                    return;
++                }
++                if (newPonente === 'new_ponente') {
++                    Swal.fire({
++                        icon: 'info',
++                        title: 'Nuevo Ponente',
++                        text: 'Para agregar un nuevo ponente, por favor cierre esta ventana temporalmente y utilice el bot├│n en la creaci├│n de eventos o el men├║ correspondiente.'
++                    });
+                     return;
+                 }
++                // Si est├ín en paso 1 y lo dejaron en Pendiente, guardamos Pendiente
++                if (!newPonente || newPonente === 'new_ponente') {
++                    newPonente = "Pendiente";
++                }
+             }
+             advanceStatus(eventData, nextStep, false, newPonente);
+         };
+@@ -2167,7 +2941,7 @@ document.addEventListener('DOMContentLoaded', () => {
+             const flowConfig = STATUS_FLOW.find(s => s.id === targetStep); // Config of the NEW step
+             if (flowConfig && flowConfig.redirect) {
+                 // Redirect happens
+-                document.querySelector(`[data-target="${flowConfig.redirect}"]`).click();
++                document.querySelector(`[data - target= "${flowConfig.redirect}"]`).click();
+             }
+         }
+ 
+@@ -2201,7 +2975,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                 showConfirmButton: false,
+                 timer: 3000,
+                 icon: 'success',
+-                title: `Estado actualizado a: ${getStatusText(targetStep)}`
++                title: `Estado actualizado a: ${getStatusText(targetStep)} `
+             });
+ 
+             document.getElementById('status-modal').classList.remove('active');
+@@ -2226,7 +3000,7 @@ document.addEventListener('DOMContentLoaded', () => {
+     async function syncToGoogleSheets(action, dataObj) {
+         if (!GOOGLE_APP_SCRIPT_WEBHOOK_URL) return;
+ 
+-        // Forma un payload consistente similar a c├│mo lo hac├¡a crear_evento originalmente 
++        // Forma un payload consistente similar a c├│mo lo hac├¡a crear_evento originalmente
+         // pero adaptado para todas las acciones (crear, actualizar, eliminar, actualizar_estado).
+ 
+         let webhookPayload = {
+@@ -2242,10 +3016,10 @@ document.addEventListener('DOMContentLoaded', () => {
+                 const schedule = JSON.parse(dataObj.horario || '[]');
+                 if (schedule && schedule.length > 0) {
+                     const partesIni = schedule[0].fecha.split('-');
+-                    if (partesIni.length === 3) fechaInicioStr = `${partesIni[2]}/${partesIni[1]}/${partesIni[0]}`;
++                    if (partesIni.length === 3) fechaInicioStr = `${partesIni[2]} /${partesIni[1]}/${partesIni[0]} `;
+ 
+                     const partesFin = schedule[schedule.length - 1].fecha.split('-');
+-                    if (partesFin.length === 3) fechaFinStr = `${partesFin[2]}/${partesFin[1]}/${partesFin[0]}`;
++                    if (partesFin.length === 3) fechaFinStr = `${partesFin[2]} /${partesFin[1]}/${partesFin[0]} `;
+ 
+                     if (partesIni.length === 3) {
+                         const [yyyy, mm, dd] = partesIni;
+@@ -2258,7 +3032,7 @@ document.addEventListener('DOMContentLoaded', () => {
+                         let mH = parseInt(hh, 10);
+                         let ampm = mH >= 12 ? 'p. m.' : 'a. m.';
+                         mH = mH % 12 || 12;
+-                        primeraHora = `${mH}:${mm} ${ampm}`;
++                        primeraHora = `${mH}:${mm} ${ampm} `;
+                     }
+                 }
+             } catch (e) { }
+@@ -2300,7 +3074,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+     // --- CSV IMPORT LOGIC ---
+     const fileInput = document.getElementById('csv-file-input');
+-    const processBtn = document.getElementById('btn-process-csv');
++    const btnProcessCsv = document.getElementById('btn-process-csv'); // Renamed from processBtn for consistency
+     const previewContainer = document.getElementById('preview-container');
+     const tableBody = document.getElementById('participants-table-body');
+     const statsSpan = document.getElementById('import-stats');
+@@ -2308,12 +3082,18 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+     let parsedParticipants = []; // Store data for backend submission
+ 
+-    if (processBtn) {
+-        processBtn.addEventListener('click', () => {
+-            console.log('Bot├│n Cargar presionado');
++    if (btnProcessCsv) {
++        btnProcessCsv.addEventListener('click', () => {
+             const file = fileInput.files[0];
++            const eventSelector = document.getElementById('cert-event-selector');
++
++            if (eventSelector && !eventSelector.value) {
++                Swal.fire('Atenci├│n', 'Por favor, primero seleccione un evento en la lista de arriba.', 'warning');
++                return;
++            }
++
+             if (!file) {
+-                alert('Por favor selecciona un archivo CSV primero.');
++                Swal.fire('Error', 'Por favor seleccione un archivo CSV primero.', 'error');
+                 return;
+             }
+ 
+@@ -2328,164 +3108,137 @@ document.addEventListener('DOMContentLoaded', () => {
+     }
+ 
+     function processCSV(csvText) {
+-        console.log('Procesando CSV, longitud:', csvText.length);
+-        const lines = csvText.split(/\r\n|\n/).filter(line => line.trim() !== '');
+-        if (lines.length < 2) {
+-            alert('El archivo parece vac├¡o o no tiene cabeceras (filas insuficientes).');
+-            return;
+-        }
+-
+-        // 1. Detect Headers
+-        const headers = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase().replace(/"/g, ''));
+-
+-        // Map headers to internal keys (Based on User Screenshot)
+-        const map = {
+-            dni: headers.findIndex(h => h.includes('dni')),
+-            nombres: headers.findIndex(h => h.includes('nombre') && !h.includes('apellido')), // Avoid "Apellidos y Nombres" if that ever appears
+-            apellidos: headers.findIndex(h => h.includes('apellido')),
+-            // Matches "Correo electr├│nico (Coloca el correo institucional...)"
+-            correoInst: headers.findIndex(h => h.includes('institucional') || h.includes('correo') && h.includes('electr├│nico')),
+-            // Fallback for personal if a separate column exists (not determining from screenshot but keeping logic safe)
+-            correoPers: headers.findIndex(h => h.includes('personal') && h.includes('correo')),
+-            // Matches "N├║mero de celular activo...", "Celular", "Tel├®fono", "M├│vil", etc.
+-            telefono: headers.findIndex(h => h.includes('celular') || h.includes('tel├®fono') || h.includes('telefono') || h.includes('whatsapp') || h.includes('cel') || h.includes('movil') || h.includes('phone'))
+-        };
++        console.log('Procesando CSV con PapaParse...');
++
++        Papa.parse(csvText, {
++            header: false,
++            skipEmptyLines: true,
++            complete: function (results) {
++                const lines = results.data;
++                if (lines.length < 2) {
++                    Swal.fire('Error', 'El archivo parece vac├¡o o no tiene cabeceras (filas insuficientes).', 'error');
++                    return;
++                }
+ 
+-        // --- HEURISTIC DETECTION FOR PHONE ---
+-        // If phone column not found by name, scan data for 9-digit patterns
+-        if (map.telefono === -1 && lines.length > 1) {
+-            console.log('Tel├®fono no detectado por cabecera. Iniciando escaneo heur├¡stico...');
+-            const maxRowsToScan = Math.min(lines.length - 1, 20);
+-            const columnScores = {};
+-
+-            for (let i = 1; i <= maxRowsToScan; i++) {
+-                const row = parseCSVLine(lines[i]);
+-                row.forEach((cell, index) => {
+-                    // Check if looks like a phone number (9 digits, maybe spaces)
+-                    const clean = cell.replace(/\D/g, '');
+-                    if (clean.length === 9 && cell.length < 20) { // Limit length to avoid long numeric strings
+-                        columnScores[index] = (columnScores[index] || 0) + 1;
+-                    }
+-                });
+-            }
++                // 1. Detect Headers
++                const headers = lines[0].map(h => h ? h.trim().toLowerCase() : '');
++
++                // Map headers to internal keys
++                const map = {
++                    dni: headers.findIndex(h => h.includes('dni')),
++                    nombres: headers.findIndex(h => h.includes('nombre') && !h.includes('apellido')),
++                    apellidos: headers.findIndex(h => h.includes('apellido')),
++                    correoInst: headers.findIndex(h => h.includes('institucional') || (h.includes('correo') && h.includes('electr├│nico'))),
++                    correoPers: headers.findIndex(h => h.includes('personal') && h.includes('correo')),
++                    telefono: headers.findIndex(h => h.includes('celular') || h.includes('tel├®fono') || h.includes('telefono') || h.includes('whatsapp') || h.includes('cel') || h.includes('movil') || h.includes('phone')),
++
++                    // New fields
++                    turno: headers.findIndex(h => h.includes('turno')),
++                    ciclo: headers.findIndex(h => h.includes('ciclo') || h.includes('semestre')),
++                    egresado: headers.findIndex(h => h.includes('egresado'))
++                };
+ 
+-            // Find column with max checks
+-            let bestCol = -1;
+-            let maxScore = 0;
+-            for (const [colIndex, score] of Object.entries(columnScores)) {
+-                if (score > maxScore) {
+-                    maxScore = score;
+-                    bestCol = parseInt(colIndex);
++                // Combine names logic if there is only one column for "Apellidos y Nombres"
++                // Often forms just say "Apellidos y Nombres completos"
++                const combinedNameIndex = headers.findIndex(h => h.includes('apellidos y nombres') || h.includes('nombres y apellidos'));
++                if (combinedNameIndex !== -1) {
++                    map.nombres = combinedNameIndex;
++                    map.apellidos = -1; // Ignore separate if combined is present
+                 }
+-            }
+ 
+-            // Threshold: at least 1 match? or more depending on scan size?
+-            // If we found a column with good signal, use it.
+-            if (bestCol !== -1) {
+-                console.log(` heur├¡stica: Columna ${bestCol} parece ser tel├®fono (Score: ${maxScore})`);
+-                map.telefono = bestCol;
+-            }
+-        }
++                parsedParticipants = [];
++                tableBody.innerHTML = '';
+ 
+-        parsedParticipants = [];
+-        tableBody.innerHTML = '';
++                let validCount = 0;
++                let warningCount = 0;
+ 
+-        let validCount = 0;
+-        let warningCount = 0;
++                // 2. Parse Rows
++                for (let i = 1; i < lines.length; i++) {
++                    const row = lines[i];
+ 
+-        // 2. Parse Rows
+-        for (let i = 1; i < lines.length; i++) {
+-            const row = parseCSVLine(lines[i]);
++                    if (!row || row.length < headers.length * 0.5) continue; // Skip empty/malformed
+ 
+-            if (!row || row.length < headers.length * 0.5) continue; // Skip empty/malformed
++                    // Extract values safely
++                    let dni = map.dni !== -1 ? (row[map.dni] || '') : '';
++                    let nombresRaw = map.nombres !== -1 ? (row[map.nombres] || '') : '';
++                    let apellidosRaw = map.apellidos !== -1 ? (row[map.apellidos] || '') : '';
+ 
+-            // Extract values
+-            let dni = map.dni !== -1 ? (row[map.dni] || '') : '';
+-            let nombres = map.nombres !== -1 ? (row[map.nombres] || '') : '';
+-            let apellidos = map.apellidos !== -1 ? (row[map.apellidos] || '') : '';
++                    let fullName = apellidosRaw ? `${apellidosRaw}, ${nombresRaw} ` : nombresRaw;
+ 
+-            // Combine names if split, or use full name if combined
+-            let fullName = apellidos ? `${apellidos}, ${nombres}` : nombres;
++                    let emailInst = map.correoInst !== -1 ? (row[map.correoInst] || '') : '';
++                    let emailPers = map.correoPers !== -1 ? (row[map.correoPers] || '') : '';
+ 
+-            let emailInst = map.correoInst !== -1 ? (row[map.correoInst] || '') : '';
+-            let emailPers = map.correoPers !== -1 ? (row[map.correoPers] || '') : '';
++                    let telefono = map.telefono !== -1 ? (row[map.telefono] || '') : '';
++                    telefono = telefono.replace(/\s+/g, '').replace(/\D/g, '');
+ 
+-            // Clean Phone: Remove spaces and non-digits
+-            let telefono = map.telefono !== -1 ? (row[map.telefono] || '') : '';
+-            telefono = telefono.replace(/\s+/g, '').replace(/\D/g, ''); // Keep only digits
++                    let turno = map.turno !== -1 ? (row[map.turno] || '') : '';
++                    let ciclo = map.ciclo !== -1 ? (row[map.ciclo] || '') : '';
++                    let egresadoRaw = map.egresado !== -1 ? (row[map.egresado] || '') : '';
++                    let esEgresado = egresadoRaw.toLowerCase().includes('si') || egresadoRaw.toLowerCase().includes('s├¡') || egresadoRaw.toLowerCase() === 'x';
+ 
+-            // Priority Logic
+-            let finalEmail = emailInst && isValidEmail(emailInst) ? emailInst : emailPers;
++                    let finalEmail = emailInst && isValidEmail(emailInst) ? emailInst : emailPers;
+ 
+-            // Validation
+-            let status = 'ok';
+-            let msg = '';
++                    // Validation
++                    let status = 'ok';
++                    let msg = '';
+ 
+-            // DNI Validation
+-            dni = dni.replace(/\D/g, ''); // Remove non-digits
+-            if (dni.length !== 8) {
+-                status = 'error';
+-                msg += 'DNI debe tener 8 d├¡gitos. ';
+-            }
++                    // DNI Validation
++                    dni = dni.replace(/\D/g, ''); // Remove non-digits
++                    if (dni.length !== 8) {
++                        status = 'error';
++                        msg += 'DNI debe tener 8 d├¡gitos. ';
++                    }
+ 
+-            // Phone Validation
+-            if (telefono.length > 0 && telefono.length !== 9) {
+-                status = 'warning'; // Warning, not blocking error? Or error? Let's say warning for phone.
+-                msg += 'Celular debe tener 9 d├¡gitos. ';
+-            }
++                    // Phone Validation
++                    if (telefono.length > 0 && telefono.length !== 9) {
++                        status = 'warning';
++                        msg += 'Celular debe tener 9 d├¡gitos. ';
++                    }
+ 
+-            // Email Validation
+-            if (!isValidEmail(finalEmail)) {
+-                status = 'error';
+-                msg += 'Correo inv├ílido o dominio no permitido (@certus.edu.pe / @gmail.com). ';
+-                finalEmail = finalEmail || (emailInst + ' ' + emailPers);
+-            } else if (emailInst && !isValidEmail(emailInst) && isValidEmail(emailPers)) {
+-                status = 'warning';
+-                msg += 'Usando correo personal (Inst. no v├ílido). ';
+-            }
++                    // Email Validation
++                    if (!isValidEmail(finalEmail)) {
++                        status = 'error';
++                        msg += 'Correo inv├ílido o dominio no permitido (@certus.edu.pe / @gmail.com). ';
++                        finalEmail = finalEmail || (emailInst + ' ' + emailPers);
++                    } else if (emailInst && !isValidEmail(emailInst) && isValidEmail(emailPers)) {
++                        status = 'warning';
++                        msg += 'Usando correo personal (Inst. no v├ílido). ';
++                    }
+ 
+-            // Create Object
+-            const participant = {
+-                id: i, // temp id
+-                dni: dni,
+-                nombresRaw: nombres.replace(/"/g, '').trim(),
+-                apellidosRaw: apellidos.replace(/"/g, '').trim(),
+-                nombre: fullName.replace(/"/g, ''),
+-                email: finalEmail.replace(/"/g, ''),
+-                telefono: telefono,
+-                status: status,
+-                msg: msg
+-            };
++                    // Create Object
++                    const participant = {
++                        id: i,
++                        dni: dni,
++                        nombresRaw: nombresRaw.trim(),
++                        apellidosRaw: apellidosRaw.trim(),
++                        nombre: fullName.trim(),
++                        email: finalEmail.trim(),
++                        telefono: telefono,
++                        turno: turno.trim(),
++                        ciclo: ciclo.trim(),
++                        esEgresado: esEgresado,
++                        status: status,
++                        msg: msg
++                    };
+ 
+-            parsedParticipants.push(participant);
+-            renderRow(participant);
++                    parsedParticipants.push(participant);
++                    renderRow(participant);
+ 
+-            if (status === 'ok') validCount++;
+-            else warningCount++;
+-        }
+-
+-        previewContainer.classList.remove('hidden');
+-        statsSpan.innerHTML = `Detectados: <b>${parsedParticipants.length}</b> | V├ílidos: <b style="color:#4ade80">${validCount}</b> | Observados: <b style="color:#f87171">${warningCount}</b>`;
++                    if (status === 'ok') validCount++;
++                    else warningCount++;
++                }
+ 
+-        const exportBtn = document.getElementById('btn-export-contacts');
+-        if (exportBtn) exportBtn.disabled = false;
+-    }
++                previewContainer.classList.remove('hidden');
++                statsSpan.innerHTML = `Detectados: <b>${parsedParticipants.length}</b> | V├ílidos: <b style="color:#4ade80">${validCount}</b> | Observados: <b style="color:#f87171">${warningCount}</b>`;
+ 
+-    function parseCSVLine(text) {
+-        // Handle quotes
+-        const result = [];
+-        let start = 0;
+-        let inQuotes = false;
+-        for (let i = 0; i < text.length; i++) {
+-            if (text[i] === '"') {
+-                inQuotes = !inQuotes;
+-            } else if (text[i] === ',' && !inQuotes) {
+-                result.push(text.substring(start, i));
+-                start = i + 1;
++                const exportBtn = document.getElementById('btn-export-contacts');
++                if (exportBtn) exportBtn.disabled = false;
++            },
++            error: function (err) {
++                console.error("PapaParse error:", err);
++                Swal.fire('Error', 'Hubo un error al procesar el archivo CSV.', 'error');
+             }
+-        }
+-        result.push(text.substring(start));
+-        return result.map(s => s.replace(/^"|"$/g, '').trim());
++        });
+     }
+ 
+     function isValidEmail(email) {
+@@ -2501,15 +3254,18 @@ document.addEventListener('DOMContentLoaded', () => {
+         const badgeText = p.status === 'ok' ? 'OK' : 'OBSERVADO';
+ 
+         tr.innerHTML = `
+-            <td><span class="status-badge ${badgeClass}" title="${p.msg}">${badgeText}</span></td>
+-            <td><input type="text" class="table-input ${p.status === 'error' && p.dni.length !== 8 ? 'invalid' : ''}" value="${p.dni}" onchange="updateParticipant(${p.id}, 'dni', this.value)"></td>
+-            <td><input type="text" class="table-input" value="${p.nombre}" onchange="updateParticipant(${p.id}, 'nombre', this.value)"></td>
+-            <td><input type="email" class="table-input ${!isValidEmail(p.email) ? 'invalid' : ''}" value="${p.email}" onchange="updateParticipant(${p.id}, 'email', this.value)"></td>
+-            <td><input type="text" class="table-input" value="${p.telefono}" onchange="updateParticipant(${p.id}, 'telefono', this.value)"></td>
++                                < td > <span class="status-badge ${badgeClass}" title="${p.msg}">${badgeText}</span></td >
++            <td><input type="text" class="table-input ${p.status === 'error' && p.dni.length !== 8 ? 'invalid' : ''}" value="${p.dni}" onchange="updateParticipant(${p.id}, 'dni', this.value)" style="width: 80px;"></td>
++            <td><input type="text" class="table-input" value="${p.nombre}" onchange="updateParticipant(${p.id}, 'nombre', this.value)" style="width: 150px;"></td>
++            <td><input type="email" class="table-input ${!isValidEmail(p.email) ? 'invalid' : ''}" value="${p.email}" onchange="updateParticipant(${p.id}, 'email', this.value)" style="width: 150px;"></td>
++            <td><input type="text" class="table-input" value="${p.telefono || ''}" onchange="updateParticipant(${p.id}, 'telefono', this.value)" style="width: 90px;"></td>
++            <td><input type="text" class="table-input" value="${p.turno || ''}" onchange="updateParticipant(${p.id}, 'turno', this.value)" style="width: 80px;"></td>
++            <td><input type="text" class="table-input" value="${p.ciclo || ''}" onchange="updateParticipant(${p.id}, 'ciclo', this.value)" style="width: 80px;"></td>
++            <td style="text-align: center;"><input type="checkbox" ${p.esEgresado ? 'checked' : ''} onchange="updateParticipant(${p.id}, 'esEgresado', this.checked)"></td>
+             <td>
+                 <button class="btn-icon small" onclick="removeParticipant(${p.id}, this)"><i class="ph ph-trash"></i></button>
+             </td>
+-        `;
++                            `;
+         tableBody.appendChild(tr);
+     }
+ 
+@@ -2578,7 +3334,7 @@ document.addEventListener('DOMContentLoaded', () => {
+ 
+             // First Name Prefix
+             const firstNameRaw = p.nombresRaw || p.nombre;
+-            const finalFirstName = cleanLabel ? `${cleanLabel}_${firstNameRaw}` : firstNameRaw;
++            const finalFirstName = cleanLabel ? `${cleanLabel}_${firstNameRaw} ` : firstNameRaw;
+ 
+             // Label Logic: * myContacts (FIXED)
+             const finalLabelColumn = '* myContacts';
+@@ -2649,37 +3405,170 @@ document.addEventListener('DOMContentLoaded', () => {
+             // 4. Populate Fields
+             fieldEmails.value = emailList;
+             fieldSubject.value = subject;
++            fieldBody.value = body;
++
++            // 5. Generate Mailto
++            const mailtoParams = new URLSearchParams();
++            mailtoParams.append('bcc', emailList);
++            mailtoParams.append('subject', subject);
++            mailtoParams.append('body', body);
++
++            mailtoLink.href = `mailto:? ${mailtoParams.toString().replace(/\+/g, '%20')} `;
++            mailtoLink.classList.remove('hidden');
+ 
+-            // Check for personalization tags in body
+-            if (body.includes('{nombre}') || body.includes('{dni}')) {
+-                alert('ADVERTENCIA: Tu mensaje usa variables como {nombre}. En el modo manual (copiar y pegar), NO se pueden personalizar los mensajes individuales. Se usar├í una versi├│n gen├®rica.');
++            Swal.fire({
++                toast: true, position: 'top-end', icon: 'success', title: 'Datos generados. Usa los botones "Copiar" o abre tu cliente de correo.',
++                showConfirmButton: false, timer: 4000
++            });
++        });
++    }
++
++    window.copyToClipboard = function (elementId) {
++        const el = document.getElementById(elementId);
++        if (!el) return;
++        el.select();
++        document.execCommand('copy');
++
++        // Visual feedback
++        const btn = el.parentElement.querySelector('button');
++        const oldHtml = btn.innerHTML;
++        btn.innerHTML = '<i class="ph ph-check" style="color:#10b981;"></i>';
++        setTimeout(() => btn.innerHTML = oldHtml, 2000);
++    };
++
++    // --- CERTIFICATES: DATABASE SAVING & PORTAL LOGIC ---
++
++    // 1. Selector Change Event -> Load DB 
++    const certEventSelector = document.getElementById('cert-event-selector');
++    if (certEventSelector) {
++        certEventSelector.addEventListener('change', (e) => {
++            loadEventParticipantsDB(e.target.value);
++        });
++    }
++
++    // 2. Load Participants from DB
++    async function loadEventParticipantsDB(eventId) {
++        const tbody = document.getElementById('db-participants-table-body');
++        if (!tbody) return;
++
++        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 2rem;"><i class="ph ph-spinner ph-spin"></i> Cargando estudiantes...</td></tr>';
++
++        try {
++            const { data, error } = await supabase
++                .from('participantes')
++                .select('*')
++                .eq('evento_id', eventId)
++                .order('apellidosRaw', { ascending: true }); // We'll try to order, might fallback to name if column doesnt exist
++
++            if (error) throw error;
++
++            tbody.innerHTML = '';
++
++            if (data.length === 0) {
++                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 2rem; color: var(--text-muted);">A├║n no hay estudiantes guardados en la base de datos para este evento.</td></tr>';
++                return;
+             }
+ 
+-            // Generic Body Cleaning
+-            let cleanBody = body
+-                .replace(/{nombre}/g, 'Estimado(a) Estudiante')
+-                .replace(/{dni}/g, '[DNI]')
+-                .replace(/{curso}/g, 'Evento Acad├®mico')
+-                .replace(/{fecha}/g, new Date().toLocaleDateString());
++            data.forEach(p => {
++                const tr = document.createElement('tr');
++                const certStatus = p.certificado_url ?
++                    `< a href = "${p.certificado_url}" target = "_blank" style = "color: #3b82f6; text-decoration: underline;" > <i class="ph ph-file-pdf"></i> Ver Certificado</a > ` :
++                    `< span style = "color: #f59e0b;" > <i class="ph ph-clock"></i> Pendiente</span > `;
++
++                tr.innerHTML = `
++                                < td style = "font-family: monospace;" > ${p.dni}</td >
++                    <td><b>${p.nombres}</b></td>
++                    <td>${p.correo || '-'}</td>
++                    <td>${certStatus}</td>
++                            `;
++                tbody.appendChild(tr);
++            });
++
++        } catch (error) {
++            console.error("Error cargando participantes DB:", error);
++            tbody.innerHTML = `< tr > <td colspan="4" style="text-align:center; color: #ef4444; padding: 1rem;">Error al cargar datos.</td></tr > `;
++        }
++    }
+ 
+-            fieldBody.value = cleanBody;
++    // 3. Save Parsed Participants to DB
++    const btnSaveParticipantsDb = document.getElementById('btn-save-participantsdb');
++    if (btnSaveParticipantsDb) {
++        btnSaveParticipantsDb.addEventListener('click', async () => {
++            const eventId = certEventSelector ? certEventSelector.value : null;
+ 
+-            // 5. Generate Mailto (Optional helper, might be too long for browsers)
+-            // Limit to first 50 chars of body to avoid URL limits if needed, or try full.
+-            // Mailto often fails with too many recipients (approx 2000 chars limit).
+-            // We will try to put limits.
+-            const mailtoUrl = `mailto:?bcc=${emailList}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(cleanBody)}`;
+-            if (mailtoUrl.length < 2000) {
+-                mailtoLink.href = mailtoUrl;
+-                mailtoLink.classList.remove('hidden');
+-            } else {
+-                mailtoLink.classList.add('hidden'); // Too long
++            if (!eventId) {
++                Swal.fire('Error', 'Selecciona a qu├® evento pertenecen estos estudiantes en el paso 1.', 'error');
++                return;
+             }
+ 
+-            alert('Datos generados. Puedes copiarlos ahora.');
++            const validParticipants = parsedParticipants.filter(p => p.status === 'ok');
++
++            if (validParticipants.length === 0) {
++                Swal.fire('Atenci├│n', 'No hay estudiantes v├ílidos (Status OK) en la lista para guardar.', 'warning');
++                return;
++            }
++
++            const confirm = await Swal.fire({
++                title: '┬┐Guardar en Base de Datos?',
++                text: `Se insertar├ín ${validParticipants.length} estudiantes al evento seleccionado. ┬┐Continuar ? `,
++                icon: 'question',
++                showCancelButton: true,
++                confirmButtonText: 'S├¡, guardar',
++                cancelButtonText: 'Cancelar'
++            });
++
++            if (!confirm.isConfirmed) return;
++
++            // Show Loading
++            const originalIcon = btnSaveParticipantsDb.innerHTML;
++            btnSaveParticipantsDb.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Guardando...';
++            btnSaveParticipantsDb.disabled = true;
++
++            try {
++                // Prepare array for Supabase
++                const payload = validParticipants.map(p => ({
++                    evento_id: eventId,
++                    dni: p.dni,
++                    nombres: p.nombre, // We mapped fullName to 'nombre' in parser
++                    correo: p.email,
++                    telefono: p.telefono,
++                    turno: p.turno,
++                    ciclo: p.ciclo,
++                    es_egresado: p.esEgresado,
++                    asistencia: true
++                }));
++
++                const { data, error } = await supabase
++                    .from('participantes')
++                    .insert(payload);
++
++                if (error) throw error;
++
++                Swal.fire('Exito!', `Se guardaron ${validParticipants.length} estudiantes correctamente en Supabase.`, 'success');
++
++                // Clear parser view to prevent double-saving
++                parsedParticipants = [];
++                document.getElementById('participants-table-body').innerHTML = '';
++                document.getElementById('preview-container').classList.add('hidden');
++
++                // Reload DB View
++                loadEventParticipantsDB(eventId);
++
++            } catch (err) {
++                console.error("Error guardando participantes:", err);
++                Swal.fire('Error', 'No se pudieron guardar los participantes en la base de datos: ' + err.message, 'error');
++            } finally {
++                btnSaveParticipantsDb.innerHTML = originalIcon;
++                btnSaveParticipantsDb.disabled = false;
++            }
+         });
+     }
+ 
++    // Initial check on load
++    document.addEventListener('DOMContentLoaded', () => {
++        // Any init logic
++    });
++
+     // Helper to copy
+     window.copyToClipboard = function (elementId) {
+         const el = document.getElementById(elementId);
