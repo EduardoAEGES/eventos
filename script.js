@@ -260,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- BACKEND INTEGRATION (SUPABASE) ---
     // Initialize Supabase Client
     const supabaseUrl = 'https://klmjmlhwuzhymrplemgw.supabase.co';
-    const supabaseKey = 'sb_publishable_DSS-WHn-WawxfYe0RWUHRg_odMjrb_b';
+    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsbWptbGh3dXpoeW1ycGxlbWd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE1OTMyNjQsImV4cCI6MjA4NzE2OTI2NH0.xFWMvUJa9n9TBcBG1WSeqCGiWBaCAtCU9aY7GXk4W6E';
     window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
     const supabase = window.supabaseClient;
 
@@ -2163,36 +2163,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                         // 3. Sincronizar Participantes a Supabase (Upsert)
                                         if (result.responses && result.responses.length > 0) {
-                                            const participantsToSync = result.responses.map(resp => {
-                                                // Mapeo dinámico basado en los títulos del formulario
-                                                const dniKey = Object.keys(resp).find(k => k.toLowerCase().includes('dni'));
-                                                const nombresKey = Object.keys(resp).find(k => k.toLowerCase().includes('nombres'));
-                                                const apellidosKey = Object.keys(resp).find(k => k.toLowerCase().includes('apellidos'));
-                                                const correoKey = Object.keys(resp).find(k => k.toLowerCase().includes('correo'));
-                                                const telKey = Object.keys(resp).find(k => k.toLowerCase().includes('celular') || k.toLowerCase().includes('teléfono'));
-                                                const cicloKey = Object.keys(resp).find(k => k.toLowerCase().includes('ciclo'));
-                                                const turnoKey = Object.keys(resp).find(k => k.toLowerCase().includes('turno'));
-                                                const catKey = Object.keys(resp).find(k => k.toLowerCase().includes('usted como parte'));
+                                            // Mapeo robusto: buscar el valor sin importar espacios o typos leves en la llave
+                                            const findVal = (row, possibleKeys) => {
+                                                const key = Object.keys(row).find(k =>
+                                                    possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
+                                                );
+                                                return key ? row[key] : null;
+                                            };
 
+                                            const participantesToUpsert = result.responses.map(r => {
                                                 return {
                                                     evento_id: eventData.id,
-                                                    dni: resp[dniKey] || 'N/A',
-                                                    nombres: resp[nombresKey] || '',
-                                                    apellidos: resp[apellidosKey] || '',
-                                                    correo: resp[correoKey] || '',
-                                                    telefono: resp[telKey] || '',
-                                                    ciclo: resp[cicloKey] || '',
-                                                    turno: resp[turnoKey] || '',
-                                                    turno: resp[turnoKey] || '',
-                                                    categoria: resp[catKey] || ''
+                                                    dni: r['DNI:'] || r['DNI'] || findVal(r, ['DNI']) || 'N/A',
+                                                    nombres: r['Nombres:'] || r['Nombres'] || findVal(r, ['Nombres']),
+                                                    apellidos: r['Apellidos:'] || r['Apellidos'] || findVal(r, ['Apellid']), // Maneja "Apellido s:"
+                                                    correo: r['Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)'] || r['Correo'] || findVal(r, ['Correo']),
+                                                    telefono: r['Número del celular activo (Nos comunicaremos a este número)'] || r['Número del celular'] || findVal(r, ['Celular', 'Telefono']),
+                                                    categoria: r['Usted como parte de la familia CERTUS es:'] || r['Ciclo:'] || findVal(r, ['familia', 'Ciclo', 'Categoria']),
+                                                    asistencia: false // Asegurar que sea false por defecto
                                                 };
                                             }).filter(p => p.dni !== 'N/A');
 
-                                            if (participantsToSync.length > 0) {
-                                                // Realizamos upsert masivo por DNI y Evento
+                                            if (participantesToUpsert.length > 0) {
                                                 const { error: upsertError } = await window.supabaseClient
                                                     .from('participantes')
-                                                    .upsert(participantsToSync, { onConflict: 'dni, evento_id' });
+                                                    .upsert(participantesToUpsert, { onConflict: 'dni, evento_id' });
 
                                                 if (upsertError) console.error("Error sincronizando participantes:", upsertError);
                                             }
@@ -4217,54 +4212,93 @@ window.currentParticipantsData = [];
 window.currentEventIdForReview = null;
 
 async function openParticipantReviewModal(eventId) {
+    if (!eventId) {
+        console.error("No eventId provided to openParticipantReviewModal");
+        return;
+    }
+
     window.currentEventIdForReview = eventId;
     const modal = document.getElementById('participant-review-modal');
-    const tableBody = document.getElementById('participants-table-body');
+    const tableBody = document.getElementById('modal-participants-table-body');
 
     modal.classList.add('active');
+    modal.removeAttribute('aria-hidden'); // ARIA fix
+
     tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>';
+    modal.removeAttribute('data-previous-aria-hidden'); // Limpiar rastros de librerías externas
+
 
     try {
+        // Asegurarse de que eventId sea el tipo correcto (entero según el esquema)
+        const idToQuery = parseInt(eventId);
+
         const { data, error } = await window.supabaseClient
             .from('participantes')
             .select('*')
-            .eq('evento_id', eventId)
-            .order('apellidos', { ascending: true });
+            .eq('evento_id', idToQuery);
 
+        // Quitamos el .order('apellidos') por ahora por si la columna no existe aún
+        // Ordenaremos en memoria para ser más robustos
         if (error) throw error;
 
-        window.currentParticipantsData = data || [];
+        let participants = data || [];
+
+        // Ordenar por apellidos si la columna existe, sino por nombres
+        participants.sort((a, b) => {
+            const nameA = (a.apellidos || a.nombres || "").toLowerCase();
+            const nameB = (b.apellidos || b.nombres || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+
+        window.currentParticipantsData = participants;
         renderReviewTable(window.currentParticipantsData);
 
     } catch (err) {
         console.error("Error al cargar participantes:", err);
-        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171; padding: 2rem;">Error al cargar datos</td></tr>';
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#f87171; padding: 2rem;">
+            <i class="ph ph-warning-circle" style="font-size: 2rem; display: block; margin-bottom: 0.5rem;"></i>
+            Error al cargar datos: ${err.message}<br>
+            <small style="color: var(--text-muted);">Asegúrate de haber ejecutado 'db_fix_missing_columns.sql' en Supabase.</small>
+        </td></tr>`;
     }
 }
 
 function renderReviewTable(participants) {
-    const tableBody = document.getElementById('participants-table-body');
+    const tableBody = document.getElementById('modal-participants-table-body');
+    if (!tableBody) return;
+
     tableBody.innerHTML = '';
+    window.lastRenderedParticipants = participants;
 
     let okCount = 0;
     let obsCount = 0;
 
-    participants.forEach((p, index) => {
-        const validation = validateParticipant(p);
-        if (validation.isValid) okCount++; else obsCount++;
+    if (!participants || participants.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem; color: #94a3b8;">No hay participantes registrados.</td></tr>';
+    } else {
+        participants.forEach((p, index) => {
+            const validation = validateParticipant(p);
+            if (validation.isValid) okCount++; else obsCount++;
 
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><input type="text" class="inline-edit ${validation.errors.dni ? 'field-error' : ''}" value="${p.dni || ''}" onchange="updateLocalParticipant(${index}, 'dni', this.value)"></td>
-            <td><input type="text" class="inline-edit" value="${p.nombres || ''}" onchange="updateLocalParticipant(${index}, 'nombres', this.value)"></td>
-            <td><input type="text" class="inline-edit" value="${p.apellidos || ''}" onchange="updateLocalParticipant(${index}, 'apellidos', this.value)"></td>
-            <td><input type="text" class="inline-edit ${validation.errors.correo ? 'field-error' : ''}" value="${p.correo || ''}" onchange="updateLocalParticipant(${index}, 'correo', this.value)"></td>
-            <td><input type="text" class="inline-edit ${validation.errors.telefono ? 'field-error' : ''}" value="${p.telefono || ''}" onchange="updateLocalParticipant(${index}, 'telefono', this.value)"></td>
-            <td><input type="text" class="inline-edit" value="${p.categoria || ''}" onchange="updateLocalParticipant(${index}, 'categoria', this.value)"></td>
-            <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
-        `;
-        tableBody.appendChild(tr);
-    });
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="inline-edit ${validation.errors.dni ? 'field-error' : ''}" value="${p.dni || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'dni', this.value)"></td>
+                <td><input type="text" class="inline-edit" value="${p.nombres || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'nombres', this.value)"></td>
+                <td><input type="text" class="inline-edit" value="${p.apellidos || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'apellidos', this.value)"></td>
+                <td><input type="text" class="inline-edit ${validation.errors.correo ? 'field-error' : ''}" value="${p.correo || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'correo', this.value)"></td>
+                <td><input type="text" class="inline-edit ${validation.errors.telefono ? 'field-error' : ''}" value="${p.telefono || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'telefono', this.value)"></td>
+                <td><input type="text" class="inline-edit" value="${p.categoria || ''}" 
+                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'categoria', this.value)"></td>
+                <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
+            `;
+            tableBody.appendChild(tr);
+        });
+    }
 
     document.getElementById('total-participants').innerText = participants.length;
     document.getElementById('ok-participants').innerText = okCount;
@@ -4272,10 +4306,11 @@ function renderReviewTable(participants) {
 }
 
 function validateParticipant(p) {
+    if (!p) return { isValid: false, errors: { dni: true, correo: true, telefono: true } };
     const errors = {
-        dni: !p.dni || p.dni.length !== 8 || isNaN(p.dni),
+        dni: !p.dni || p.dni.toString().length !== 8 || isNaN(p.dni),
         correo: !p.correo || !p.correo.includes('@') || !p.correo.includes('.'),
-        telefono: !p.telefono || (p.telefono && p.telefono.replace(/\s/g, '').length < 7)
+        telefono: !p.telefono || (p.telefono && p.telefono.toString().replace(/\s/g, '').length < 7)
     };
 
     return {
@@ -4284,23 +4319,25 @@ function validateParticipant(p) {
     };
 }
 
-function updateLocalParticipant(index, field, value) {
-    window.currentParticipantsData[index][field] = value;
-    // Podríamos re-renderizar solo la fila, pero por simplicidad re-renderizamos todo el resumen
-    // o simplemente validamos visualmente el input
-    renderReviewTable(window.currentParticipantsData);
+function updateLocalParticipant(indexInList, field, value) {
+    const listSource = window.lastRenderedParticipants || [];
+    const participant = listSource[indexInList];
+    if (!participant) return;
+
+    // Actualizar en el objeto local (referencia)
+    participant[field] = value;
+
+    // Sincronizar con el estado global real (por si acaso estemos en vista filtrada)
+    const realIdx = window.currentParticipantsData.findIndex(p => p.dni === participant.dni);
+    if (realIdx !== -1) {
+        window.currentParticipantsData[realIdx][field] = value;
+    }
+
+    // Re-renderizar usando la MISMA lista que se estaba viendo
+    renderReviewTable(listSource);
 }
 
-// Búsqueda/Filtro
-document.getElementById('participant-search').addEventListener('input', (e) => {
-    const term = e.target.value.toLowerCase();
-    const filtered = window.currentParticipantsData.filter(p =>
-        (p.dni && p.dni.includes(term)) ||
-        (p.nombres && p.nombres.toLowerCase().includes(term)) ||
-        (p.apellidos && p.apellidos.toLowerCase().includes(term))
-    );
-    renderReviewTable(filtered);
-});
+// Búsqueda remetida a petición del usuario
 
 // Guardar Cambios
 document.getElementById('btn-save-participants').addEventListener('click', async () => {
@@ -4338,6 +4375,15 @@ window.addEventListener('click', (e) => {
     const reviewModal = document.getElementById('participant-review-modal');
     if (e.target === reviewModal) {
         reviewModal.classList.remove('active');
+        reviewModal.setAttribute('aria-hidden', 'true');
     }
 });
+
+// Función para cerrar modal explícitamente y resetear ARIA
+function closeParticipantReviewModal() {
+    const modal = document.getElementById('participant-review-modal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+window.closeParticipantReviewModal = closeParticipantReviewModal;
 

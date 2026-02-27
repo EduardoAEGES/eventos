@@ -803,27 +803,18 @@
     </div>
 
     <!-- Modal para Revisión de Participantes -->
-    <div id="participant-review-modal" class="modal-overlay">
+    <div id="participant-review-modal" class="modal-overlay" style="z-index: 2001;" aria-hidden="false">
         <div class="modal-content participant-review-modal">
             <div class="modal-header">
                 <h2><i class="ph ph-users"></i> Revisión de Inscritos</h2>
-                <button class="close-modal"
-                    onclick="document.getElementById('participant-review-modal').classList.remove('active')"><i
-                        class="ph ph-x"></i></button>
+                <button class="close-modal" onclick="closeParticipantReviewModal()"><i class="ph ph-x"></i></button>
             </div>
             <div class="modal-body">
-                <div class="search-container">
-                    <div style="position: relative; flex: 1;">
-                        <i class="ph ph-magnifying-glass"
-                            style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted);"></i>
-                        <input type="text" id="participant-search" class="input-modern"
-                            placeholder="Buscar por DNI o nombres..." style="padding-left: 35px; margin-top: 0;">
-                    </div>
-                    <div id="sync-stats" style="font-size: 0.85rem; color: var(--text-muted);">
-                        Total: <span id="total-participants">0</span> | <span style="color: #4ade80;">OK: <span
-                                id="ok-participants">0</span></span> | <span style="color: #f87171;">Obs: <span
-                                id="obs-participants">0</span></span>
-                    </div>
+                <div id="sync-stats"
+                    style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem; text-align: right;">
+                    Total: <span id="total-participants">0</span> | <span style="color: #4ade80;">OK: <span
+                            id="ok-participants">0</span></span> | <span style="color: #f87171;">Obs: <span
+                            id="obs-participants">0</span></span>
                 </div>
 
                 <div class="table-responsive">
@@ -839,15 +830,14 @@
                                 <th>Estado</th>
                             </tr>
                         </thead>
-                        <tbody id="participants-table-body">
+                        <tbody id="modal-participants-table-body">
                             <!-- Llenado dinámico -->
                         </tbody>
                     </table>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn-secondary"
-                    onclick="document.getElementById('participant-review-modal').classList.remove('active')">Cerrar</button>
+                <button type="button" class="btn-secondary" onclick="closeParticipantReviewModal()">Cerrar</button>
                 <button type="button" id="btn-save-participants" class="btn-primary">Guardar Cambios</button>
             </div>
         </div>
