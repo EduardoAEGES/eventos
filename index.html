@@ -821,13 +821,17 @@
                     <table class="review-table">
                         <thead>
                             <tr>
+                                <th width="40"><input type="checkbox" id="select-all-participants"
+                                        onclick="toggleSelectAllParticipants(this.checked)"></th>
                                 <th>DNI</th>
                                 <th>Nombres</th>
                                 <th>Apellidos</th>
                                 <th>Correo</th>
                                 <th>Celular</th>
                                 <th>Categoría</th>
+                                <th>Asistió</th>
                                 <th>Estado</th>
+                                <th width="40"></th>
                             </tr>
                         </thead>
                         <tbody id="modal-participants-table-body">
@@ -836,9 +840,140 @@
                     </table>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary" onclick="closeParticipantReviewModal()">Cerrar</button>
-                <button type="button" id="btn-save-participants" class="btn-primary">Guardar Cambios</button>
+            <div class="modal-footer"
+                style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                <div>
+                    <button type="button" id="btn-delete-selected" class="btn-secondary"
+                        style="color: #f87171; border-color: rgba(248, 113, 113, 0.3); display: none;"
+                        onclick="deleteSelectedParticipants()">
+                        <i class="ph ph-trash"></i> Eliminar Seleccionados
+                    </button>
+                    <button type="button" id="btn-add-recipients" class="btn-secondary"
+                        style="color: #60a5fa; border-color: rgba(99, 102, 241, 0.3);"
+                        onclick="addParticipantsToDraft()">
+                        <i class="ph ph-user-plus"></i> Agregar Destinatarios
+                    </button>
+                </div>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button type="button" class="btn-secondary" onclick="closeParticipantReviewModal()">Cerrar</button>
+                    <button type="button" id="btn-save-participants" class="btn-primary">Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Borrador de Recordatorio -->
+    <div id="reminder-draft-modal" class="modal-overlay" style="z-index: 2005;" aria-hidden="true">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2><i class="ph ph-envelope-simple"></i> Borrador de Recordatorio</h2>
+                <button class="close-modal" onclick="closeReminderDraftModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div
+                    style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                        <input type="text" id="rem-draft-to"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                        <input type="text" id="rem-draft-cc"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
+                            (Destinatarios):</label>
+                        <textarea id="rem-draft-cco"
+                            placeholder="Haz clic en 'Revisar Inscritos' y luego en 'Agregar Destinatarios'"
+                            style="width: 100%; height: 80px; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px; font-size: 0.85rem; resize: none;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 0;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                        <input type="text" id="rem-draft-subject"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                </div>
+                <div style="text-align: left;">
+                    <label
+                        style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; display: block;">Cuerpo
+                        del mensaje:</label>
+                    <textarea id="rem-draft-text"
+                        style="width: 100%; height: 200px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 1rem;">
+                <button onclick="copyReminderDraft()" class="btn-primary">
+                    <i class="ph ph-copy"></i> Copiar Todo
+                </button>
+                <button id="btn-open-review-from-draft" class="btn-secondary"
+                    style="color: white; background: #10b981; border: none;">
+                    <i class="ph ph-users"></i> Revisar Inscritos (Sync)
+                </button>
+                <button onclick="closeReminderDraftModal()" class="btn-secondary">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Borrador de Constancias -->
+    <div id="certificate-draft-modal" class="modal-overlay" style="z-index: 2005;" aria-hidden="true">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #8b5cf6, #6d28d9);">
+                <h2><i class="ph ph-certificate"></i> Envío de Constancias de Participación</h2>
+                <button class="close-modal" onclick="closeCertificatesDraftModal()"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div
+                    style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                        <input type="text" id="cert-draft-to"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                        <input type="text" id="cert-draft-cc"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
+                            (Destinatarios de Constancias):</label>
+                        <textarea id="cert-draft-cco"
+                            placeholder="Haz clic en 'Revisar Inscritos' y luego en 'Agregar Destinatarios'"
+                            style="width: 100%; height: 80px; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px; font-size: 0.85rem; resize: none;"></textarea>
+                    </div>
+                    <div style="margin-bottom: 0;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                        <input type="text" id="cert-draft-subject"
+                            style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
+                    </div>
+                </div>
+                <div style="text-align: left;">
+                    <label
+                        style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; display: block;">Cuerpo
+                        del mensaje:</label>
+                    <textarea id="cert-draft-text"
+                        style="width: 100%; height: 200px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none;"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer" style="padding-top: 1rem;">
+                <button onclick="copyCertificatesDraft()" class="btn-primary" style="background: #8b5cf6;">
+                    <i class="ph ph-copy"></i> Copiar Todo
+                </button>
+                <button id="btn-open-review-from-cert" class="btn-secondary"
+                    style="color: white; background: #10b981; border: none;">
+                    <i class="ph ph-users"></i> Revisar Inscritos (Sync)
+                </button>
+                <button onclick="closeCertificatesDraftModal()" class="btn-secondary">Cerrar</button>
             </div>
         </div>
     </div>

@@ -1640,8 +1640,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 { id: 'borrador_recordatorio', label: 'Generar Borrador de Recordatorio', type: 'action_draft_reminder' }
             ]
         },
-        { id: 6, label: 'Realizado', req: 'Se debe desarrollar el evento en las fechas programadas' },
-        { id: 7, label: 'Concluido', req: 'Se debe entregar constancias y elaborar informe final', redirect: 'generacion' }
+        {
+            id: 6,
+            label: 'Realizado',
+            req: [
+                { id: 'evidencia_fotos', label: '¿Has tomado capturas de pantalla /fotos como evidencia?' },
+                { id: 'compartido_asistencia', label: '¿Has compartido formulario de asistencia?' },
+                { id: 'borrador_constancias', label: 'Generar Borrador de Constancias', type: 'action_draft_certificates' },
+                { id: 'enviado_constancias', label: '¿Has enviado las constancias de participación?' },
+                { id: 'culminado_total', label: '¿Has desarrollado y culminado el evento?' }
+            ]
+        },
+        {
+            id: 7,
+            label: 'Concluido',
+            req: '¡Evento finalizado con éxito! Todos los pasos han sido completados.'
+        }
     ];
 
     let currentEventForStatus = null; // Store currently selected event data
@@ -1715,6 +1729,51 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             nextBadge.style.display = 'none'; // Reached end
             btnAdvance.style.display = 'none';
+
+            // --- REPORTE FINAL DEL EVENTO (Step 7) ---
+            const reqContainer = document.querySelector('.status-requirements');
+            const reqTitle = reqContainer ? reqContainer.querySelector('h4') : null;
+            if (reqTitle) reqTitle.textContent = "Reporte Final del Evento";
+
+            reqList.innerHTML = `<li style="padding: 2rem; text-align: center; color: #94a3b8;"><i class="ph ph-spinner ph-spin" style="font-size: 2rem;"></i><br>Cargando reporte de alumnos...</li>`;
+
+            (async () => {
+                try {
+                    const { data: participants, error } = await window.supabaseClient
+                        .from('participantes')
+                        .select('dni, asistencia')
+                        .eq('evento_id', eventData.id);
+
+                    if (error) throw error;
+
+                    const totalInscritos = participants.length;
+                    const totalAsistentes = participants.filter(p => p.asistencia === true).length;
+                    const porcentajeAsistencia = totalInscritos > 0 ? Math.round((totalAsistentes / totalInscritos) * 100) : 0;
+
+                    reqList.innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem 0;">
+                            <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); padding: 1.5rem 1rem; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">Inscritos</div>
+                                <div style="font-size: 2rem; font-weight: 800; color: #3b82f6;">${totalInscritos}</div>
+                            </div>
+                            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); padding: 1.5rem 1rem; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">Asistentes</div>
+                                <div style="font-size: 2rem; font-weight: 800; color: #10b981;">${totalAsistentes}</div>
+                            </div>
+                            <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.2); padding: 1.5rem 1rem; border-radius: 12px; text-align: center;">
+                                <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">Asistencia %</div>
+                                <div style="font-size: 2rem; font-weight: 800; color: #8b5cf6;">${porcentajeAsistencia}%</div>
+                            </div>
+                        </div>
+                        <li style="padding: 1rem; color: #94a3b8; text-align: center; border: none; font-size: 0.9rem; line-height: 1.6;">
+                            ¡Evento finalizado con éxito! Todos los pasos han sido completados y la data ha sido sincronizada.
+                        </li>
+                    `;
+                } catch (e) {
+                    console.error("Error al cargar reporte:", e);
+                    reqList.innerHTML = `<li style="padding: 1rem; color: #ef4444; text-align: center;">Error al cargar la data de participantes.</li>`;
+                }
+            })();
         }
 
         if (nextStep <= 7) {
@@ -2115,6 +2174,183 @@ document.addEventListener('DOMContentLoaded', () => {
                             return;
                         }
 
+                        // --- SPECIAL LOGIC FOR ACTION_DRAFT_CERTIFICATES ---
+                        else if (r.type === 'action_draft_certificates') {
+                            li.innerHTML = `
+                                <div style="flex:1; padding-right: 15px;">
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                </div>
+                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <button class="btn-secondary" id="btn-cert-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
+                                        <i class="ph ph-certificate"></i> Generar Borrador
+                                    </button>
+                                </div>
+                            `;
+                            reqList.appendChild(li);
+
+                            li.querySelector(`#btn-cert-${r.id}`).addEventListener('click', async (e) => {
+                                const btn = e.currentTarget;
+                                const originalHtml = btn.innerHTML;
+                                btn.disabled = true;
+                                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Sincronizando...`;
+
+                                try {
+                                    const reqObj = window.currentEventRequisitos || {};
+                                    // Para constancias, necesitamos el enlace de asistencia (usualmente guardado en reqData.asistencia_form_url o similar si el usuario lo puso)
+                                    // Pero el usuario dijo "como cuando presionabas generar borrador en fase 5", así que buscaremos el sheet de respuestas.
+
+                                    // 1. Obtener respuestas del formulario de ASISTENCIA (no de inscripción)
+                                    if (!reqData.responses_sheet_asistencia_url) {
+                                        console.log("Iniciando búsqueda automática de asistencia en folder:", reqObj.folder_url);
+                                        // Intentar búsqueda AUTOMÁTICA primero si hay folder_url
+                                        let foundUrl = "";
+                                        if (reqObj.folder_url) {
+                                            try {
+                                                const gasSearch = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                                                    method: 'POST', mode: 'cors',
+                                                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                                    body: JSON.stringify({
+                                                        action: 'vincular_y_obtener_respuestas',
+                                                        data: {
+                                                            folder_url: reqObj.folder_url,
+                                                            form_type: 'ASISTENCIA'
+                                                        }
+                                                    })
+                                                });
+                                                const searchResult = await gasSearch.json();
+                                                console.log("GAS Search Result:", searchResult);
+
+                                                if (searchResult.status === "ok" && searchResult.spreadsheet_url) {
+                                                    reqData.responses_sheet_asistencia_url = searchResult.spreadsheet_url;
+                                                    reqData.asistencia_responses = searchResult.responses || [];
+                                                    await updateReqsInDB(reqData);
+                                                    foundUrl = searchResult.spreadsheet_url;
+                                                    console.log("Búsqueda automática exitosa:", foundUrl);
+                                                }
+                                            } catch (searchErr) {
+                                                console.warn("Error en búsqueda automática:", searchErr);
+                                            }
+                                        }
+
+                                        // Si falló la búsqueda automática (o no hay folder_url), pedir manual (Backup)
+                                        if (!foundUrl) {
+                                            console.log("Búsqueda automática falló, solicitando URL manual");
+                                            const { value: url } = await Swal.fire({
+                                                title: 'Enlace de Asistencia',
+                                                text: 'No pudimos encontrar el formulario de asistencia automáticamente. Por favor, realiza lo siguiente:\n1. Abre el formulario de asistencia en Google Forms.\n2. Ve a la pestaña "Respuestas" y haz clic en "Vincular con Hojas de cálculo".\n3. Pega aquí el enlace de esa hoja generada.',
+                                                input: 'url',
+                                                inputPlaceholder: 'https://docs.google.com/spreadsheets/d/...',
+                                                showCancelButton: true
+                                            });
+
+                                            if (!url) throw new Error("Se requiere el enlace de asistencia para continuar.");
+
+                                            const gasResponse = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                                                method: 'POST', mode: 'cors',
+                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                                body: JSON.stringify({
+                                                    action: 'vincular_y_obtener_respuestas',
+                                                    data: { form_url: url }
+                                                })
+                                            });
+                                            const result = await gasResponse.json();
+                                            if (result.status === "ok") {
+                                                reqData.responses_sheet_asistencia_url = result.spreadsheet_url;
+                                                reqData.asistencia_responses = result.responses || [];
+                                                await updateReqsInDB(reqData);
+                                            } else throw new Error(result.message || "Error en GAS");
+                                        }
+                                    }
+
+                                    // 2. Sincronización Inteligente
+                                    const { data: dbParticipants } = await window.supabaseClient
+                                        .from('participantes')
+                                        .select('*')
+                                        .eq('evento_id', eventData.id);
+
+                                    const asistenciaRows = reqData.asistencia_responses || [];
+                                    const toUpsert = [];
+
+                                    const findVal = (row, possibleKeys) => {
+                                        const key = Object.keys(row).find(k =>
+                                            possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
+                                        );
+                                        return key ? row[key] : null;
+                                    };
+
+                                    asistenciaRows.forEach(row => {
+                                        const dni = (row['DNI:'] || row['DNI'] || findVal(row, ['DNI']) || '').toString().trim();
+                                        const correo = (row['Correo electrónico'] || row['Correo'] || findVal(row, ['Correo']) || '').toString().trim().toLowerCase();
+                                        const apellidosNuevos = (row['Apellidos:'] || row['Apellidos'] || findVal(row, ['Apellido']) || '').toString().trim();
+                                        const nombresNuevos = (row['Nombres:'] || row['Nombres'] || findVal(row, ['Nombre']) || '').toString().trim();
+                                        let nombreCompleto = "";
+
+                                        if (apellidosNuevos || nombresNuevos) {
+                                            nombreCompleto = (apellidosNuevos + " " + nombresNuevos).trim();
+                                        } else {
+                                            nombreCompleto = (row['Apellidos y Nombres completos:'] || row['Apellidos y Nombres completos'] || row['Nombres y Apellidos'] || '').toString().trim();
+                                        }
+
+                                        if (!dni && !correo && !nombreCompleto) return;
+
+                                        // Buscar en DB si ya existe
+                                        let existing = dbParticipants.find(p => {
+                                            const matchDni = dni && p.dni && p.dni.toString().trim() === dni;
+                                            const matchCorreo = correo && p.correo && p.correo.toLowerCase().trim() === correo;
+
+                                            const pFull = (p.nombres + ' ' + (p.apellidos || '')).toLowerCase().trim();
+                                            const rowFull = nombreCompleto.toLowerCase().trim();
+                                            const matchNombre = nombreCompleto && (pFull.includes(rowFull) || rowFull.includes(pFull));
+
+                                            return matchDni || matchCorreo || matchNombre;
+                                        });
+
+                                        if (existing) {
+                                            toUpsert.push({
+                                                ...existing,
+                                                asistencia: true,
+                                                certificado_autorizado: true
+                                            });
+                                        } else {
+                                            // Si no existe, crear nuevo
+                                            toUpsert.push({
+                                                evento_id: eventData.id,
+                                                dni: dni || 'N/A',
+                                                nombres: nombreCompleto,
+                                                correo: correo,
+                                                asistencia: true,
+                                                certificado_autorizado: true
+                                            });
+                                        }
+                                    });
+
+                                    if (toUpsert.length > 0) {
+                                        await window.supabaseClient
+                                            .from('participantes')
+                                            .upsert(toUpsert, { onConflict: 'dni, evento_id' });
+                                    }
+
+                                    // 3. Abrir Modal de Borrador de Constancias
+                                    window.openCertificatesDraftModal(eventData, reqData);
+
+                                    // Marcar como completado
+                                    reqData[r.id] = true;
+                                    await updateReqsInDB(reqData);
+                                    window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+
+                                } catch (error) {
+                                    console.error(error);
+                                    Swal.fire('Error', error.message, 'error');
+                                } finally {
+                                    btn.disabled = false;
+                                    btn.innerHTML = originalHtml;
+                                }
+                            });
+
+                            if (reqData[r.id] !== true) isStepCompletable = false;
+                            return;
+                        }
+
                         // --- SPECIAL LOGIC FOR ACTION_DRAFT_REMINDER ---
                         else if (r.type === 'action_draft_reminder') {
                             li.innerHTML = `
@@ -2142,122 +2378,77 @@ document.addEventListener('DOMContentLoaded', () => {
                                         return;
                                     }
 
-                                    // 1. Llamar a GAS para vincular Sheets y obtener respuestas
-                                    const gasResponse = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
-                                        method: 'POST', mode: 'cors',
-                                        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                        body: JSON.stringify({
-                                            action: 'vincular_y_obtener_respuestas',
-                                            data: {
-                                                form_url: reqObj.form_inscripcion_url,
-                                                folder_url: reqObj.folder_url
-                                            }
-                                        })
-                                    });
-                                    const result = await gasResponse.json();
+                                    // --- LÓGICA DE SINCRONIZACIÓN INTELIGENTE ---
+                                    if (!reqData.responses_sheet_url) {
+                                        // 1. Llamar a GAS para vincular Sheets y obtener respuestas
+                                        const gasResponse = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+                                            method: 'POST', mode: 'cors',
+                                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                                            body: JSON.stringify({
+                                                action: 'vincular_y_obtener_respuestas',
+                                                data: {
+                                                    form_url: reqObj.form_inscripcion_url,
+                                                    folder_url: reqObj.folder_url
+                                                }
+                                            })
+                                        });
+                                        const result = await gasResponse.json();
 
-                                    if (result.status === "ok") {
-                                        // 2. Guardar URL de Sheets en Requisitos
-                                        reqData.responses_sheet_url = result.spreadsheet_url;
-                                        await updateReqsInDB(reqData);
+                                        if (result.status === "ok") {
+                                            // 2. Guardar URL de Sheets en Requisitos
+                                            reqData.responses_sheet_url = result.spreadsheet_url;
+                                            await updateReqsInDB(reqData);
 
-                                        // 3. Sincronizar Participantes a Supabase (Upsert)
-                                        if (result.responses && result.responses.length > 0) {
-                                            // Mapeo robusto: buscar el valor sin importar espacios o typos leves en la llave
-                                            const findVal = (row, possibleKeys) => {
-                                                const key = Object.keys(row).find(k =>
-                                                    possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
-                                                );
-                                                return key ? row[key] : null;
-                                            };
-
-                                            const participantesToUpsert = result.responses.map(r => {
-                                                return {
-                                                    evento_id: eventData.id,
-                                                    dni: r['DNI:'] || r['DNI'] || findVal(r, ['DNI']) || 'N/A',
-                                                    nombres: r['Nombres:'] || r['Nombres'] || findVal(r, ['Nombres']),
-                                                    apellidos: r['Apellidos:'] || r['Apellidos'] || findVal(r, ['Apellid']), // Maneja "Apellido s:"
-                                                    correo: r['Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)'] || r['Correo'] || findVal(r, ['Correo']),
-                                                    telefono: r['Número del celular activo (Nos comunicaremos a este número)'] || r['Número del celular'] || findVal(r, ['Celular', 'Telefono']),
-                                                    categoria: r['Usted como parte de la familia CERTUS es:'] || r['Ciclo:'] || findVal(r, ['familia', 'Ciclo', 'Categoria']),
-                                                    asistencia: false // Asegurar que sea false por defecto
+                                            // 3. Sincronizar Participantes a Supabase (Upsert)
+                                            if (result.responses && result.responses.length > 0) {
+                                                const findVal = (row, possibleKeys) => {
+                                                    const key = Object.keys(row).find(k =>
+                                                        possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
+                                                    );
+                                                    return key ? row[key] : null;
                                                 };
-                                            }).filter(p => p.dni !== 'N/A');
 
-                                            if (participantesToUpsert.length > 0) {
-                                                const { error: upsertError } = await window.supabaseClient
-                                                    .from('participantes')
-                                                    .upsert(participantesToUpsert, { onConflict: 'dni, evento_id' });
+                                                const participantesToUpsert = result.responses.map(r => {
+                                                    return {
+                                                        evento_id: eventData.id,
+                                                        dni: r['DNI:'] || r['DNI'] || findVal(r, ['DNI']) || 'N/A',
+                                                        nombres: r['Nombres:'] || r['Nombres'] || findVal(r, ['Nombres']),
+                                                        apellidos: r['Apellidos:'] || r['Apellidos'] || findVal(r, ['Apellid']),
+                                                        correo: r['Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)'] || r['Correo'] || findVal(r, ['Correo']),
+                                                        telefono: r['Número del celular activo (Nos comunicaremos a este número)'] || r['Número del celular'] || findVal(r, ['Celular', 'Telefono']),
+                                                        categoria: r['Usted como parte de la familia CERTUS es:'] || r['Ciclo:'] || findVal(r, ['familia', 'Ciclo', 'Categoria']),
+                                                        asistencia: false
+                                                    };
+                                                }).filter(p => p.dni !== 'N/A');
 
-                                                if (upsertError) console.error("Error sincronizando participantes:", upsertError);
+                                                if (participantesToUpsert.length > 0) {
+                                                    await window.supabaseClient
+                                                        .from('participantes')
+                                                        .upsert(participantesToUpsert, { onConflict: 'dni, evento_id' });
+                                                }
                                             }
-                                        }
-                                    } else {
-                                        throw new Error(result.message || "Error en GAS");
-                                    }
-
-                                    // 4. Mostrar el Borrador (Lógica existente)
-                                    let fechasFormateadas = "[Fecha no disponible]";
-                                    const hStr = eventData.horario || '[]';
-                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
-                                    const fechasArr = [];
-                                    for (const h of hrs) {
-                                        if (h.fecha) {
-                                            const [yyyy, mm, dd] = h.fecha.split('-');
-                                            let ft = `${dd}/${mm}/${yyyy}`;
-                                            if (h.inicio && h.fin) ft += ` desde las ${h.inicio} hasta las ${h.fin}`;
-                                            else if (h.inicio) ft += ` desde las ${h.inicio}`;
-                                            fechasArr.push(ft);
+                                        } else {
+                                            throw new Error(result.message || "Error en GAS");
                                         }
                                     }
-                                    if (fechasArr.length > 0) fechasFormateadas = fechasArr.join(', ');
 
-                                    const linkReunionText = (reqData.prog_zoom_meet && reqData.prog_zoom_meet.trim().length > 0) ? `\nEnlace de acceso a la reunión virtual: ${reqData.prog_zoom_meet}\n` : (eventData.modalidad === 'Presencial' ? '' : '\n[No se especificó enlace de reunión]\n');
+                                    // 4. Mostrar el Borrador usando el nuevo Modal Custom
+                                    window.openReminderDraftModal(eventData, reqData);
 
-                                    const draftText = `Estimados participantes,\n\nLes recordamos que están inscritos en el evento ${eventData.tipo} "${eventData.nombre}", el cual se llevará a cabo en las siguientes fechas:\n${fechasFormateadas}\n${linkReunionText}\nPor favor, recuerden ser puntuales.\n\n¡Los esperamos!`;
-
-                                    Swal.fire({
-                                        title: 'Borrador de Recordatorio',
-                                        html: `
-                                            <div style="text-align: left; margin-bottom: 15px;">
-                                                <label style="color: #cbd5e1; display: block; margin-bottom: 5px;">Asunto del correo:</label>
-                                                <input type="text" id="rem-draft-subject" readonly value="Recordatorio del evento: ${eventData.nombre}" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #475569; background: #1e293b; color: white; display: block;">
-                                            </div>
-                                            <div style="text-align: left;">
-                                                <label style="color: #cbd5e1; display: block; margin-bottom: 5px;">Cuerpo del mensaje:</label>
-                                                <textarea id="rem-draft-text" readonly style="width: 100%; height: 160px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none; box-sizing: border-box;">${draftText}</textarea>
-                                            </div>
-                                            <div style="margin-top: 15px; display: flex; gap: 10px; justify-content: center;">
-                                                <button onclick="navigator.clipboard.writeText(document.getElementById('rem-draft-subject').value + '\\n\\n' + document.getElementById('rem-draft-text').value); Swal.fire('Copiado', 'Texto y asunto copiados al portapapeles', 'success');" class="btn-primary" style="padding: 0.6rem 1.2rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; cursor:pointer;">
-                                                    <i class="ph ph-copy"></i> Copiar Todo
-                                                </button>
-                                                <button onclick="window.openParticipantReviewModal('${eventData.id}')" class="btn-secondary" style="padding: 0.6rem 1.2rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; cursor:pointer; color: white; background: #10b981; border: none;">
-                                                    <i class="ph ph-users"></i> Revisar Inscritos (Sync)
-                                                </button>
-                                            </div>
-                                        `,
-                                        showConfirmButton: false,
-                                        showCloseButton: true,
-                                        width: '600px',
-                                        customClass: { popup: 'swal-dark-layout' }
-                                    });
-
+                                    // MARCAR COMO COMPLETADO Y REFRESCAR UI
                                     reqData[r.id] = true;
                                     await updateReqsInDB(reqData);
                                     window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
 
                                 } catch (error) {
                                     console.error(error);
-                                    let errorMsg = error.message;
-                                    // Si el error viene de GAS con el mensaje de "No se ha encontrado...", añadimos la URL para diagnóstico
-                                    if (errorMsg.includes("ID indicado") || errorMsg.includes("not found")) {
-                                        const reqObj = window.currentEventRequisitos || {};
-                                        errorMsg += "\n\n(URL del formulario: " + (reqObj.form_inscripcion_url || "No encontrada") + ")";
-                                    }
-                                    Swal.fire('Error', 'No se pudo sincronizar la hoja de cálculo: ' + errorMsg, 'error');
+                                    Swal.fire('Error', 'No se pudo generar el borrador: ' + error.message, 'error');
                                 } finally {
-                                    btn.disabled = false;
-                                    btn.innerHTML = originalHtml;
+                                    // Restaurar el botón original pase lo que pase
+                                    if (btn) {
+                                        btn.disabled = false;
+                                        btn.innerHTML = originalHtml;
+                                    }
                                 }
                             });
 
@@ -3029,7 +3220,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const flowConfig = STATUS_FLOW.find(s => s.id === targetStep); // Config of the NEW step
             if (flowConfig && flowConfig.redirect) {
                 // Redirect happens
-                document.querySelector(`[data - target= "${flowConfig.redirect}"]`).click();
+                const targetBtn = document.querySelector(`[data-target="${flowConfig.redirect}"]`);
+                if (targetBtn) targetBtn.click();
             }
         }
 
@@ -4222,9 +4414,12 @@ async function openParticipantReviewModal(eventId) {
     const tableBody = document.getElementById('modal-participants-table-body');
 
     modal.classList.add('active');
-    modal.removeAttribute('aria-hidden'); // ARIA fix
+    modal.setAttribute('aria-hidden', 'false');
+    modal.setAttribute('aria-modal', 'true');
+    // Eliminar aria-hidden del contenedor principal si existe para evitar conflictos de accesibilidad
+    document.querySelector('.app-container')?.setAttribute('aria-hidden', 'true');
 
-    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>';
     modal.removeAttribute('data-previous-aria-hidden'); // Limpiar rastros de librerías externas
 
 
@@ -4273,15 +4468,26 @@ function renderReviewTable(participants) {
     let okCount = 0;
     let obsCount = 0;
 
+    // Reset select all checkbox
+    const selectAllCheckbox = document.getElementById('select-all-participants');
+    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    toggleDeleteButton();
+
+    // Fix ARIA focus issues: ensure modal is visible before rendering content
+    const modal = document.getElementById('participant-review-modal');
+    modal.setAttribute('aria-hidden', 'false');
+
     if (!participants || participants.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem; color: #94a3b8;">No hay participantes registrados.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem; color: #94a3b8;">No hay participantes registrados.</td></tr>';
     } else {
         participants.forEach((p, index) => {
             const validation = validateParticipant(p);
             if (validation.isValid) okCount++; else obsCount++;
 
             const tr = document.createElement('tr');
+            tr.className = 'participant-row';
             tr.innerHTML = `
+                <td><input type="checkbox" class="participant-check" onchange="toggleParticipantSelection()" data-index="${index}"></td>
                 <td><input type="text" class="inline-edit ${validation.errors.dni ? 'field-error' : ''}" value="${p.dni || ''}" 
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'dni', this.value)"></td>
                 <td><input type="text" class="inline-edit" value="${p.nombres || ''}" 
@@ -4294,7 +4500,10 @@ function renderReviewTable(participants) {
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'telefono', this.value)"></td>
                 <td><input type="text" class="inline-edit" value="${p.categoria || ''}" 
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'categoria', this.value)"></td>
+                <td style="text-align:center;"><input type="checkbox" ${p.certificado_autorizado !== false ? 'checked' : ''} 
+                    onchange="updateLocalParticipant(${index}, 'certificado_autorizado', this.checked)"></td>
                 <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
+                <td><button type="button" class="btn-icon-remove" title="Eliminar" onclick="deleteSingleParticipant(${index})"><i class="ph ph-trash"></i></button></td>
             `;
             tableBody.appendChild(tr);
         });
@@ -4305,11 +4514,166 @@ function renderReviewTable(participants) {
     document.getElementById('obs-participants').innerText = obsCount;
 }
 
+// --- Nuevas funciones de gestión de participantes ---
+
+function toggleSelectAllParticipants(checked) {
+    const checks = document.querySelectorAll('.participant-check');
+    checks.forEach(cb => cb.checked = checked);
+    toggleDeleteButton();
+}
+
+function toggleParticipantSelection() {
+    const total = document.querySelectorAll('.participant-check').length;
+    const checked = document.querySelectorAll('.participant-check:checked').length;
+    const selectAllCheckbox = document.getElementById('select-all-participants');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.checked = total === checked && total > 0;
+    }
+    toggleDeleteButton();
+}
+
+function toggleDeleteButton() {
+    const checked = document.querySelectorAll('.participant-check:checked').length;
+    const btn = document.getElementById('btn-delete-selected');
+    if (btn) {
+        btn.style.display = checked > 0 ? 'inline-flex' : 'none';
+    }
+}
+
+async function deleteSingleParticipant(index) {
+    const participant = window.lastRenderedParticipants[index];
+    if (!participant) return;
+
+    const result = await Swal.fire({
+        title: '¿Eliminar participante?',
+        text: `¿Estás seguro de eliminar a ${participant.nombres} ${participant.apellidos}?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f87171',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { error } = await window.supabaseClient
+                .from('participantes')
+                .delete()
+                .eq('id', participant.id);
+
+            if (error) throw error;
+
+            Swal.fire('Eliminado', 'El participante ha sido eliminado.', 'success');
+            // Recargar la lista
+            openParticipantReviewModal(window.currentEventIdForReview);
+        } catch (err) {
+            console.error(err);
+            Swal.fire('Error', 'No se pudo eliminar: ' + err.message, 'error');
+        }
+    }
+}
+
+async function deleteSelectedParticipants() {
+    const selectedChecks = document.querySelectorAll('.participant-check:checked');
+    const idsToDelete = Array.from(selectedChecks).map(cb => {
+        const idx = parseInt(cb.getAttribute('data-index'));
+        return window.lastRenderedParticipants[idx].id;
+    });
+
+    if (idsToDelete.length === 0) return;
+
+    const result = await Swal.fire({
+        title: '¿Eliminar seleccionados?',
+        text: `¿Estás seguro de eliminar a los ${idsToDelete.length} participantes seleccionados?`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#f87171',
+        confirmButtonText: 'Sí, eliminar todos',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            const { error } = await window.supabaseClient
+                .from('participantes')
+                .delete()
+                .in('id', idsToDelete);
+
+            if (error) throw error;
+
+            Swal.fire('Eliminados', `${idsToDelete.length} participantes han sido eliminados.`, 'success');
+            openParticipantReviewModal(window.currentEventIdForReview);
+        } catch (err) {
+            console.error(err);
+            Swal.fire('Error', 'No se pudieron eliminar: ' + err.message, 'error');
+        }
+    }
+}
+
+function addParticipantsToDraft() {
+    console.log("addParticipantsToDraft called");
+    const participants = window.lastRenderedParticipants || [];
+    console.log("Participants found:", participants.length);
+    // Filtrar duplicados por correo y validar formato
+    const uniqueEmails = [...new Set(participants.map(p => p.correo?.trim()).filter(email => email && email.includes('@')))];
+    const emails = uniqueEmails.join(', ');
+    console.log("Extracted emails:", emails);
+
+    const ccoField = document.getElementById('rem-draft-cco');
+    const certCcoField = document.getElementById('cert-draft-cco');
+    const targetField = document.getElementById('reminder-draft-modal').classList.contains('active') ? ccoField : certCcoField;
+
+    if (targetField) {
+        targetField.value = emails;
+        console.log("Updated CCO field");
+
+        // Usar un método que no cierre otros modales si es posible
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+        Toast.fire({
+            icon: 'success',
+            title: `Se agregaron ${uniqueEmails.length} destinatarios`
+        });
+    } else {
+        Swal.fire('Atención', 'El modal de borrador no parece estar abierto.', 'info');
+    }
+}
+
+function copyReminderDraft() {
+    const to = document.getElementById('rem-draft-to').value;
+    const cc = document.getElementById('rem-draft-cc').value;
+    const cco = document.getElementById('rem-draft-cco').value;
+    const subject = document.getElementById('rem-draft-subject').value;
+    const body = document.getElementById('rem-draft-text').value;
+
+    const fullText = `PARA: ${to}\nCC: ${cc}\nCCO: ${cco}\nASUNTO: ${subject}\n\n${body}`;
+
+    navigator.clipboard.writeText(fullText).then(() => {
+        Swal.fire('Copiado', 'Toda la información del correo ha sido copiada al portapapeles.', 'success');
+    });
+}
+
 function validateParticipant(p) {
     if (!p) return { isValid: false, errors: { dni: true, correo: true, telefono: true } };
+
+    // El DNI debe tener exactamente 8 caracteres (pueden empezar con 0)
+    const dniRaw = p.dni ? p.dni.toString().trim() : '';
+    const isDniValid = dniRaw.length === 8 && /^\d+$/.test(dniRaw);
+
+    // Validación de correo con dominios permitidos
+    const emailRaw = p.correo ? p.correo.toString().trim().toLowerCase() : '';
+    const allowedDomains = ['@gmail.com', '@hotmail.com', '@certus.edu.pe', '@outlook.com', '@yahoo.com'];
+    const hasAllowedDomain = allowedDomains.some(domain => emailRaw.endsWith(domain));
+    const isEmailValid = emailRaw.includes('@') && emailRaw.includes('.') && hasAllowedDomain;
+
     const errors = {
-        dni: !p.dni || p.dni.toString().length !== 8 || isNaN(p.dni),
-        correo: !p.correo || !p.correo.includes('@') || !p.correo.includes('.'),
+        dni: !isDniValid,
+        correo: !isEmailValid,
         telefono: !p.telefono || (p.telefono && p.telefono.toString().replace(/\s/g, '').length < 7)
     };
 
@@ -4349,7 +4713,7 @@ document.getElementById('btn-save-participants').addEventListener('click', async
     try {
         const { error } = await window.supabaseClient
             .from('participantes')
-            .upsert(window.currentParticipantsData, { onConflict: 'dni, evento_id' });
+            .upsert(window.currentParticipantsData, { onConflict: 'dni, evento_id' }); // Usar DNI+Evento como clave de conflicto mas confiable que ID UUID si este ultimo no se cargo bien
 
         if (error) throw error;
 
@@ -4365,7 +4729,158 @@ document.getElementById('btn-save-participants').addEventListener('click', async
     }
 });
 
+// --- Lógica del Modal Custom de Borrador de Recordatorio ---
+
+function openReminderDraftModal(eventData, reqData) {
+    const modal = document.getElementById('reminder-draft-modal');
+    if (!modal) return;
+
+    // Formatear fechas
+    let fechasFormateadas = "[Fecha no disponible]";
+    const hStr = eventData.horario || '[]';
+    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
+    const fechasArr = [];
+    for (const h of hrs) {
+        if (h.fecha) {
+            const [yyyy, mm, dd] = h.fecha.split('-');
+            let ft = `${dd}/${mm}/${yyyy}`;
+            if (h.inicio && h.fin) ft += ` desde las ${h.inicio} hasta las ${h.fin}`;
+            else if (h.inicio) ft += ` desde las ${h.inicio}`;
+            fechasArr.push(ft);
+        }
+    }
+    if (fechasArr.length > 0) fechasFormateadas = fechasArr.join(', ');
+
+    const linkReunionText = (reqData.prog_zoom_meet && reqData.prog_zoom_meet.trim().length > 0)
+        ? `\nEnlace de acceso a la reunión virtual: ${reqData.prog_zoom_meet}\n`
+        : (eventData.modalidad === 'Presencial' ? '' : '\n[No se especificó enlace de reunión]\n');
+
+    const emailMap = {
+        'Eduardo': 'emamanir@certus.edu.pe',
+        'Mirko': 'mnsanchez@certus.edu.pe',
+        'José': 'jramirezp@certus.edu.pe',
+        'Jorge': 'jdurand@gmail.com',
+        'Carlos': 'cybarram@certus.edu.pe',
+        'Luis': 'lcondors@certus.edu.pe'
+    };
+    let userEmail = '';
+    if (eventData.responsable) {
+        const firstResp = eventData.responsable.split(',')[0].trim();
+        userEmail = emailMap[firstResp] || '';
+    }
+
+    const draftText = `Estimados participantes,\n\nLes recordamos que están inscritos en el evento ${eventData.tipo} "${eventData.nombre}", el cual se llevará a cabo en las siguientes fechas:\n${fechasFormateadas}\n${linkReunionText}\nPor favor, recuerden ser puntuales.\n\n¡Los esperamos!`;
+
+    // Llenar campos SOLO SI están vacíos (para persistencia)
+    const toField = document.getElementById('rem-draft-to');
+    const ccField = document.getElementById('rem-draft-cc');
+    const subjectField = document.getElementById('rem-draft-subject');
+    const textField = document.getElementById('rem-draft-text');
+
+    if (!toField.value) toField.value = userEmail;
+    if (!ccField.value) ccField.value = "lhurtadoo@certus.edu.pe, jramirezp@certus.edu.pe";
+    if (!subjectField.value) subjectField.value = `Recordatorio del evento: ${eventData.nombre}`;
+    if (!textField.value) textField.value = draftText;
+
+    // Configurar botón de revisión
+    const btnReview = document.getElementById('btn-open-review-from-draft');
+    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id);
+
+    // Asegurar que el modal de revisión esté por encima del borrador
+    document.getElementById('participant-review-modal').style.zIndex = "2100";
+    modal.style.zIndex = "2000";
+
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeReminderDraftModal() {
+    const modal = document.getElementById('reminder-draft-modal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+window.openReminderDraftModal = openReminderDraftModal;
+window.closeReminderDraftModal = closeReminderDraftModal;
+
+// --- Lógica Borrador Constancias ---
+
+function openCertificatesDraftModal(eventData, reqData) {
+    const modal = document.getElementById('certificate-draft-modal');
+    if (!modal) return;
+
+    const emailMap = {
+        'Eduardo': 'emamanir@certus.edu.pe',
+        'Mirko': 'mnsanchez@certus.edu.pe',
+        'José': 'jramirezp@certus.edu.pe',
+        'Jorge': 'jdurand@gmail.com',
+        'Carlos': 'cybarram@certus.edu.pe',
+        'Luis': 'lcondors@certus.edu.pe'
+    };
+    let userEmail = '';
+    if (eventData.responsable) {
+        const firstResp = eventData.responsable.split(',')[0].trim();
+        userEmail = emailMap[firstResp] || '';
+    }
+
+    const draftText = `Estimados participantes,\n\nEs un gusto saludarles. Les hacemos entrega de su constancia de participación por haber asistido al evento "${eventData.nombre}".\n\nPueden descargar su certificado en el siguiente enlace:\n[Enlace a carpeta de certificados o portal]\n\n¡Gracias por su participación!`;
+
+    // Llenar campos
+    const toField = document.getElementById('cert-draft-to');
+    const ccField = document.getElementById('cert-draft-cc');
+    const subjectField = document.getElementById('cert-draft-subject');
+    const textField = document.getElementById('cert-draft-text');
+
+    if (!toField.value) toField.value = userEmail;
+    if (!ccField.value) ccField.value = "lhurtadoo@certus.edu.pe, jramirezp@certus.edu.pe";
+    if (!subjectField.value) subjectField.value = `Constancia de Participación: ${eventData.nombre}`;
+    if (!textField.value) textField.value = draftText;
+
+    // Configurar botón de revisión
+    const btnReview = document.getElementById('btn-open-review-from-cert');
+    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id);
+
+    // Z-Index
+    document.getElementById('participant-review-modal').style.zIndex = "2100";
+    modal.style.zIndex = "2000";
+
+    modal.classList.add('active');
+    modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeCertificatesDraftModal() {
+    const modal = document.getElementById('certificate-draft-modal');
+    modal.classList.remove('active');
+    modal.setAttribute('aria-hidden', 'true');
+}
+
+function copyCertificatesDraft() {
+    const to = document.getElementById('cert-draft-to').value;
+    const cc = document.getElementById('cert-draft-cc').value;
+    const cco = document.getElementById('cert-draft-cco').value;
+    const subject = document.getElementById('cert-draft-subject').value;
+    const body = document.getElementById('cert-draft-text').value;
+
+    const fullText = `PARA: ${to}\nCC: ${cc}\nCCO: ${cco}\nASUNTO: ${subject}\n\n${body}`;
+
+    navigator.clipboard.writeText(fullText).then(() => {
+        Swal.fire('Copiado', 'Información de constancias copiada.', 'success');
+    });
+}
+
+window.openCertificatesDraftModal = openCertificatesDraftModal;
+window.closeCertificatesDraftModal = closeCertificatesDraftModal;
+window.copyCertificatesDraft = copyCertificatesDraft;
+
+// --- Fin Lógica Borrador ---
+
 window.openParticipantReviewModal = openParticipantReviewModal;
+window.toggleSelectAllParticipants = toggleSelectAllParticipants;
+window.toggleParticipantSelection = toggleParticipantSelection;
+window.deleteSingleParticipant = deleteSingleParticipant;
+window.deleteSelectedParticipants = deleteSelectedParticipants;
+window.addParticipantsToDraft = addParticipantsToDraft;
+window.copyReminderDraft = copyReminderDraft;
 
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('status-modal');
@@ -4376,14 +4891,30 @@ window.addEventListener('click', (e) => {
     if (e.target === reviewModal) {
         reviewModal.classList.remove('active');
         reviewModal.setAttribute('aria-hidden', 'true');
+        // No restaurar aria-hidden del app-container si el borrador está abierto
+        if (!document.getElementById('reminder-draft-modal').classList.contains('active')) {
+            document.querySelector('.app-container')?.setAttribute('aria-hidden', 'false');
+        }
+    }
+    const draftModal = document.getElementById('reminder-draft-modal');
+    if (e.target === draftModal) {
+        closeReminderDraftModal();
+    }
+    const certModal = document.getElementById('certificate-draft-modal');
+    if (e.target === certModal) {
+        closeCertificatesDraftModal();
     }
 });
 
-// Función para cerrar modal explícitamente y resetear ARIA
 function closeParticipantReviewModal() {
     const modal = document.getElementById('participant-review-modal');
     modal.classList.remove('active');
     modal.setAttribute('aria-hidden', 'true');
+    // Restaurar acceso al contenedor principal SOLO SI NO hay otros modales abiertos
+    if (!document.getElementById('reminder-draft-modal').classList.contains('active') &&
+        !document.getElementById('status-modal').classList.contains('active')) {
+        document.querySelector('.app-container')?.setAttribute('aria-hidden', 'false');
+    }
 }
 window.closeParticipantReviewModal = closeParticipantReviewModal;
 

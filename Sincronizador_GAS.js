@@ -280,14 +280,35 @@ function doPost(e) {
                     try {
                         const eventNameTitle = ev.event_name || ev.folder_name.replace(/^[0-9\/]+ /, '');
                         const eventTipo = ev.event_tipo || "Evento";
-                        const dateStr = ev.event_horario_str || "la fecha y hora programada";
 
-                        // 1. Buscar el banner de imagen en Drive (Debe llamarse exactamente "Wallpaper certus.jpg")
-                        let bannerBlob = null;
-                        const imageFiles = DriveApp.getFilesByName("Wallpaper certus.jpg");
-                        if (imageFiles.hasNext()) {
-                            bannerBlob = imageFiles.next().getBlob();
+                        // Parse date from yyyy-mm-dd to dd/mm/aaaa
+                        let dateStr = ev.event_horario_str || "";
+                        const dateMatch = dateStr.match(/(\d{4})-(\d{2})-(\d{2})(.*)/);
+                        if (dateMatch) {
+                            dateStr = `${dateMatch[3]}/${dateMatch[2]}/${dateMatch[1]}${dateMatch[4]}`;
+                        } else if (!dateStr) {
+                            dateStr = "la fecha y hora programada";
                         }
+
+                        // 1. Buscar el banner de imagen en Drive (Usando el ID fijo proporcionado)
+                        let bannerBlob = null;
+                        try {
+                            const bannerFile = DriveApp.getFileById("10bgyz64hA2dlqTTsz8zu4orV4panXCvE");
+                            bannerBlob = bannerFile.getBlob();
+                        } catch (e) {
+                            console.log("No se pudo obtener el banner por ID. " + e.message);
+                        }
+
+                        // Validaciones reutilizables
+                        const dniValidation = FormApp.createTextValidation()
+                            .requireTextMatchesPattern('^[0-9]{8}$')
+                            .setHelpText('El DNI debe contener exactamente 8 números.')
+                            .build();
+
+                        const emailValidation = FormApp.createTextValidation()
+                            .requireTextIsEmail()
+                            .setHelpText('Por favor ingrese un correo electrónico válido.')
+                            .build();
 
                         // ========== FORMULARIO DE INSCRIPCIÓN ==========
                         const formInscripcion = FormApp.create("INSCRIPCION AL TALLER VIRTUAL: " + eventNameTitle);
@@ -304,25 +325,37 @@ function doPost(e) {
                         }
 
                         formInscripcion.setDescription("Estimad@ Estudiante:\nQueremos invitarte al " + eventTipo + " que se realizará el día " + dateStr + ".\n\nImportante:\n1. Completa el presente formulario de inscripción verificando que tus datos estén correctos.\n2. Una vez inscrito, te enviaremos a tu correo un recordatorio para la asistencia de este evento\n\n¡Te esperamos!");
-                        formInscripcion.setConfirmationMessage("Gracias por inscribirse al " + eventTipo + " " + eventNameTitle + ". Se le enviará el recordatorio del evento 1 día antes junto con el link de acceso si corresponde a su correo y whatsapp.");
 
-                        formInscripcion.addTextItem().setTitle('Nombres:').setRequired(true);
+                        // Mensaje de confirmación amigable
+                        formInscripcion.setConfirmationMessage("🎉 ¡Gracias por inscribirte a " + eventTipo + ": " + eventNameTitle + "! 🚀\n\nTe enviaremos el recordatorio del evento 1 día antes, junto con el enlace de acceso (si corresponde), a tu correo electrónico y WhatsApp. 📱✉️\n\n¡Nos vemos pronto!");
+
                         formInscripcion.addTextItem().setTitle('Apellidos:').setRequired(true);
-                        formInscripcion.addTextItem().setTitle('DNI:').setRequired(true);
+                        formInscripcion.addTextItem().setTitle('Nombres:').setRequired(true);
+
+                        formInscripcion.addTextItem()
+                            .setTitle('DNI:')
+                            .setRequired(true)
+                            .setValidation(dniValidation);
+
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Usted como parte de la familia CERTUS es:')
                             .setChoiceValues(['DOCENTE', 'ESTUDIANTE', 'EGRESADO', 'EXTERNO'])
                             .setRequired(true);
+
                         formInscripcion.addTextItem()
                             .setTitle('Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)')
-                            .setRequired(true);
+                            .setRequired(true)
+                            .setValidation(emailValidation);
+
                         formInscripcion.addTextItem()
                             .setTitle('Número del celular activo (Nos comunicaremos a este número)')
                             .setRequired(true);
+
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Ciclo:')
                             .setChoiceValues(['I Ciclo', 'II Ciclo', 'III Ciclo', 'IV Ciclo', 'V Ciclo', 'VI Ciclo', 'Docente', 'Egresado', 'No aplica'])
                             .setRequired(true);
+
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Turno:')
                             .setChoiceValues(['Mañana', 'Diurno', 'Tarde', 'Noche', 'Egresado', 'No aplica'])
@@ -343,11 +376,20 @@ function doPost(e) {
 
                         formAsistencia.setDescription("Muchas gracias por participar en el taller el día " + dateStr + ".\nPor favor, registre su asistencia para la emisión de su respectiva constancia.");
 
-                        formAsistencia.addTextItem().setTitle('DNI:').setRequired(true);
-                        formAsistencia.addTextItem().setTitle('Apellidos y Nombres completos:').setRequired(true);
+                        formAsistencia.addTextItem()
+                            .setTitle('DNI:')
+                            .setRequired(true)
+                            .setValidation(dniValidation);
+
+                        formAsistencia.addTextItem().setTitle('Apellidos:').setRequired(true);
+                        formAsistencia.addTextItem().setTitle('Nombres:').setRequired(true);
+
                         formAsistencia.addTextItem()
                             .setTitle('Correo electrónico (Institucional o personal)')
-                            .setRequired(true);
+                            .setRequired(true)
+                            .setValidation(emailValidation);
+
+                        // Se omiten las preguntas internas de validación del evento en este formulario público.
 
                         // Feedback corto
                         formAsistencia.addScaleItem()
@@ -395,7 +437,7 @@ function doPost(e) {
                 let formInscUrl = "";
                 if (exists) {
                     try {
-                        const files = f.getFilesByType(MimeType.GOOGLE_FORMS);
+                        const files = f.getFilesByType('application/vnd.google-apps.form');
                         while (files.hasNext()) {
                             const file = files.next();
                             if (file.getName().includes("INSCRIPCION")) {
@@ -471,12 +513,14 @@ function doPost(e) {
                 if (!form && ev.folder_url) {
                     const folderId = extractIdFromUrl(ev.folder_url);
                     const folder = DriveApp.getFolderById(folderId);
-                    const files = folder.getFilesByType(MimeType.GOOGLE_FORMS);
+                    const files = folder.getFilesByType('application/vnd.google-apps.form');
+                    const searchPattern = (ev.form_type || "INSCRIPCION").toUpperCase();
+
                     while (files.hasNext()) {
                         const file = files.next();
-                        if (file.getName().toUpperCase().includes("INSCRIPCION")) {
+                        if (file.getName().toUpperCase().includes(searchPattern)) {
                             form = FormApp.openById(file.getId());
-                            console.log("Formulario encontrado en carpeta: " + file.getName());
+                            console.log("Formulario encontrado en carpeta (" + searchPattern + "): " + file.getName());
                             break;
                         }
                     }
@@ -486,20 +530,29 @@ function doPost(e) {
                     throw new Error("No se pudo identificar el formulario de edición. Los links de formulario publicados (/e/...) no pueden abrirse directamente. Asegúrate de que la carpeta del evento exista.");
                 }
 
-                let ssId = form.getDestinationId();
-                let ss;
+                let ssId = null;
+                try {
+                    ssId = form.getDestinationId();
+                } catch (e) {
+                    console.log("No se pudo obtener el ID del destino (normal si es nuevo)");
+                }
 
+                let ss;
                 if (!ssId) {
+                    console.log("Creando nuevo Spreadsheet de destino...");
                     const formFile = DriveApp.getFileById(form.getId());
                     const parentFolders = formFile.getParents();
                     let parentFolder = parentFolders.hasNext() ? parentFolders.next() : DriveApp.getRootFolder();
 
-                    const fileName = "RESUMEN DE INSCRITOS: " + form.getTitle();
+                    const prefix = (ev.form_type || "INSCRIPCION").toUpperCase() === "ASISTENCIA" ? "RESUMEN DE ASISTENCIA: " : "RESUMEN DE INSCRITOS: ";
+                    const fileName = prefix + form.getTitle();
                     const existingFiles = parentFolder.getFilesByName(fileName);
 
                     if (existingFiles.hasNext()) {
                         ss = SpreadsheetApp.openById(existingFiles.next().getId());
-                        form.setDestination(FormApp.DestinationType.GOOGLE_SHEETS, ss.getId());
+                        try {
+                            form.setDestination(FormApp.DestinationType.GOOGLE_SHEETS, ss.getId());
+                        } catch (e) { console.log("Ya estaba vinculado o error leve: " + e.message); }
                     } else {
                         ss = SpreadsheetApp.create(fileName);
                         form.setDestination(FormApp.DestinationType.GOOGLE_SHEETS, ss.getId());
