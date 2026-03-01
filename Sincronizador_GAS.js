@@ -591,9 +591,148 @@ function doPost(e) {
                 return ContentService.createTextOutput(JSON.stringify({ "status": "error", "message": err.toString() }))
                     .setMimeType(ContentService.MimeType.JSON);
             }
+        } else if (input && input.action === 'generar_constancias') {
+            const data = input.data; // { template_id, participants: [], event_name, event_date, folder_url }
+            if (!data.template_id || !data.participants || !data.folder_url) {
+                throw new Error("Faltan parámetros para generar constancias (template_id, participants, folder_url)");
+            }
+
+            const folderId = extractIdFromUrl(data.folder_url);
+            const parentFolder = DriveApp.getFolderById(folderId);
+
+            // Buscar o crear subcarpeta 'Constancias'
+            const subFolders = parentFolder.getFoldersByName("Constancias");
+            let constanciasFolder;
+            if (subFolders.hasNext()) {
+                constanciasFolder = subFolders.next();
+            } else {
+                constanciasFolder = parentFolder.createFolder("Constancias");
+            }
+
+            const results = [];
+            const templateFile = DriveApp.getFileById(data.template_id);
+
+            // --- Lógica de Fechas Avanzada ---
+            let fechaInicioStr = "";
+            let fechaFinStr = "";
+            let finalDateObj = new Date();
+
+            try {
+                const horarios = JSON.parse(data.event_horario_json || '[]');
+                if (horarios.length > 0) {
+                    // Ordenar horarios por fecha
+                    horarios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+
+                    const first = new Date(horarios[0].fecha + "T00:00:00");
+                    const last = new Date(horarios[horarios.length - 1].fecha + "T00:00:00");
+                    finalDateObj = new Date(last);
+
+                    if (horarios.length === 1 || first.getTime() === last.getTime()) {
+                        fechaInicioStr = formatSpanishDate(first);
+                    } else {
+                        // Formato: 24 al 26 de Mayo de 2026
+                        const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                        if (first.getMonth() === last.getMonth()) {
+                            fechaInicioStr = `${first.getDate()} al ${last.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
+                        } else {
+                            fechaInicioStr = `${first.getDate()} de ${months[first.getMonth()]} al ${last.getDate()} de ${months[last.getMonth()]} de ${first.getFullYear()}`;
+                        }
+                    }
+                } else if (data.event_date) {
+                    fechaInicioStr = formatSpanishDate(data.event_date);
+                    finalDateObj = new Date(data.event_date + "T00:00:00");
+                }
+            } catch (e) {
+                fechaInicioStr = data.event_date ? formatSpanishDate(data.event_date) : "";
+            }
+
+            // Fecha Firma (Año2): Un día después del fin
+            const firmaDate = new Date(finalDateObj);
+            firmaDate.setDate(firmaDate.getDate() + 1);
+            const fechaFirmaStr = formatSpanishDate(firmaDate);
+
+            // Nombre del Webinar: Tipo + Nombre
+            const webinarFull = `${data.event_type}: ${data.event_name}`;
+
+            for (const p of data.participants) {
+                try {
+                    const fileName = `${p.dni}_${data.event_code}`;
+                    const pdfName = `${fileName}.pdf`;
+
+                    // 0. Limpiar archivos existentes con el mismo nombre para evitar duplicados
+                    const existingFiles = constanciasFolder.getFilesByName(pdfName);
+                    while (existingFiles.hasNext()) {
+                        const existingFile = existingFiles.next();
+                        existingFile.setTrashed(true);
+                    }
+
+                    // 1. Duplicar Template
+                    const copyNode = templateFile.makeCopy(fileName, constanciasFolder);
+                    const copyId = copyNode.getId();
+
+                    // 2. Reemplazar Placeholders en la Presentación (Global)
+                    const presentation = SlidesApp.openById(copyId);
+                    const fullName = `${(p.apellidos || "").toUpperCase()} ${(p.nombres || "").toUpperCase()}`.trim();
+
+                    // Reemplazo robusto en toda la presentación
+                    presentation.getSlides().forEach(slide => {
+                        slide.getShapes().forEach(shape => {
+                            if (shape.getShapeType() === SlidesApp.ShapeType.TEXT_BOX || shape.getText()) {
+                                shape.getText().replaceText("<<Apellidos_y_Nombres>>", fullName);
+                                shape.getText().replaceText("<<Nombre_del_Webinar>>", webinarFull);
+                                shape.getText().replaceText("<<Dia_de_Mes_de_Año1>>", fechaInicioStr);
+                                shape.getText().replaceText("<<Dia_de_Mes_de_Año2>>", "Lima, " + fechaFirmaStr);
+                            }
+                        });
+                    });
+
+                    // También usar el método global por si acaso hay texto fuera de shapes detectados
+                    presentation.replaceAllText("<<Apellidos_y_Nombres>>", fullName);
+                    presentation.replaceAllText("<<Nombre_del_Webinar>>", webinarFull);
+                    presentation.replaceAllText("<<Dia_de_Mes_de_Año1>>", fechaInicioStr);
+                    presentation.replaceAllText("<<Dia_de_Mes_de_Año2>>", "Lima, " + fechaFirmaStr);
+
+                    presentation.saveAndClose();
+
+                    // Pequeña pausa para asegurar que Drive vea el archivo actualizado antes de convertir a PDF
+                    Utilities.sleep(1500);
+
+                    // 3. Convertir a PDF
+                    const pdfBlob = copyNode.getAs(MimeType.PDF);
+                    const pdfFile = constanciasFolder.createFile(pdfBlob);
+                    pdfFile.setName(pdfName);
+                    pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+                    // 4. Limpiar (Borrar la copia del Slide)
+                    copyNode.setTrashed(true);
+
+                    results.push({
+                        dni: p.dni,
+                        url: pdfFile.getUrl(),
+                        status: "success"
+                    });
+                } catch (err) {
+                    results.push({
+                        dni: p.dni,
+                        error: err.toString(),
+                        status: "error"
+                    });
+                }
+            }
+
+            return ContentService.createTextOutput(JSON.stringify({
+                "status": "ok",
+                "results": results
+            })).setMimeType(ContentService.MimeType.JSON);
         }
     } catch (err) {
         return ContentService.createTextOutput(JSON.stringify({ "error": err.message }))
             .setMimeType(ContentService.MimeType.JSON);
     }
+}
+
+function formatSpanishDate(date) {
+    if (typeof date === 'string') date = new Date(date);
+    const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    return date.getDate() + " de " + months[date.getMonth()] + " de " + date.getFullYear();
 }

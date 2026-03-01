@@ -1,7 +1,7 @@
+// 🔗 URL DEL WEBHOOK DE APPS SCRIPT PARA SINCRONIZAR A SHEETS
+const GOOGLE_APP_SCRIPT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzcuWg_eQmRMYfcilsm4b4TxlBw8YrP5p6U-UuewY6zQv7zS8ow2DZjO-ek2hYuvk4/exec";
+
 document.addEventListener('DOMContentLoaded', () => {
-    // 🔗 URL DEL WEBHOOK DE APPS SCRIPT PARA SINCRONIZAR A SHEETS
-    // Pega aquí la URL que te da Google al "Implementar como Aplicación Web"
-    const GOOGLE_APP_SCRIPT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzcuWg_eQmRMYfcilsm4b4TxlBw8YrP5p6U-UuewY6zQv7zS8ow2DZjO-ek2hYuvk4/exec";
 
     // ALERT DEBUG
     // ALERT DEBUG
@@ -59,7 +59,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // The cert-event selector is outside a modal, on the main page
-        $('#cert-event-selector').select2({
+        $('#cert-event-selector, #comunicacion-event-selector').select2({
             placeholder: "Seleccione un evento...",
             width: '100%'
         });
@@ -611,27 +611,33 @@ document.addEventListener('DOMContentLoaded', () => {
         const grid = document.getElementById('events-grid');
         grid.innerHTML = ''; // Clear current
 
-        // Actualizar selector de eventos en la pestaña Generación
+        // Actualizar selector de eventos en la pestaña Generación y Comunicación
         const certEventSelector = document.getElementById('cert-event-selector');
-        if (certEventSelector) {
-            certEventSelector.innerHTML = '<option value="" disabled selected>Selecciona un evento...</option>';
-            // Sort events by custom order or just date (newest first usually better for this)
-            const sortedForSelect = [...events].reverse();
-            sortedForSelect.forEach(ev => {
-                if (ev.estado_especial === 'Cancelado') return; // no certs for cancelled
+        const comEventSelector = document.getElementById('comunicacion-event-selector');
 
-                let dateStr = "Sin fecha";
-                try {
-                    const hs = JSON.parse(ev.horario || '[]');
-                    if (hs.length > 0 && hs[0].fecha) dateStr = hs[0].fecha;
-                } catch (e) { }
+        if (certEventSelector) certEventSelector.innerHTML = '<option value="" disabled selected>Selecciona un evento...</option>';
+        if (comEventSelector) comEventSelector.innerHTML = '<option value="" disabled selected>Selecciona un evento...</option>';
 
-                const opt = document.createElement('option');
-                opt.value = ev.id;
-                opt.textContent = `[${dateStr}] ${ev.nombre}`;
-                certEventSelector.appendChild(opt);
-            });
-        }
+        const sortedForSelect = [...events].reverse();
+        sortedForSelect.forEach(ev => {
+            if (ev.estado_especial === 'Cancelado') return; // no certs for cancelled
+
+            let dateStr = "Sin fecha";
+            try {
+                const hs = JSON.parse(ev.horario || '[]');
+                if (hs.length > 0 && hs[0].fecha) dateStr = hs[0].fecha;
+            } catch (e) { }
+
+            const optSelectCert = document.createElement('option');
+            optSelectCert.value = ev.id;
+            optSelectCert.textContent = `[${dateStr}] ${ev.nombre}`;
+            if (certEventSelector) certEventSelector.appendChild(optSelectCert);
+
+            const optSelectCom = document.createElement('option');
+            optSelectCom.value = ev.id;
+            optSelectCom.textContent = `[${dateStr}] ${ev.nombre}`;
+            if (comEventSelector) comEventSelector.appendChild(optSelectCom);
+        });
 
         if (events.length === 0) {
             grid.innerHTML = '<p style="color:white; opacity:0.7">No hay eventos registrados.</p>';
@@ -4403,7 +4409,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.currentParticipantsData = [];
 window.currentEventIdForReview = null;
 
-async function openParticipantReviewModal(eventId) {
+async function openParticipantReviewModal(eventId, showOnlyAttendees = false) {
     if (!eventId) {
         console.error("No eventId provided to openParticipantReviewModal");
         return;
@@ -4420,6 +4426,17 @@ async function openParticipantReviewModal(eventId) {
     document.querySelector('.app-container')?.setAttribute('aria-hidden', 'true');
 
     tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>';
+
+    // Actualizar título del modal dinámicamente
+    const modalTitle = document.getElementById('participant-review-title');
+    if (modalTitle) {
+        if (showOnlyAttendees) {
+            modalTitle.innerHTML = '<i class="ph ph-users"></i> Revisión de Asistentes';
+        } else {
+            modalTitle.innerHTML = '<i class="ph ph-users"></i> Revisión de Inscritos';
+        }
+    }
+
     modal.removeAttribute('data-previous-aria-hidden'); // Limpiar rastros de librerías externas
 
 
@@ -4437,6 +4454,11 @@ async function openParticipantReviewModal(eventId) {
         if (error) throw error;
 
         let participants = data || [];
+
+        // Filtrar por asistencia si se solicita
+        if (showOnlyAttendees) {
+            participants = participants.filter(p => p.asistencia === true);
+        }
 
         // Ordenar por apellidos si la columna existe, sino por nombres
         participants.sort((a, b) => {
@@ -4468,9 +4490,9 @@ function renderReviewTable(participants) {
     let okCount = 0;
     let obsCount = 0;
 
-    // Reset select all checkbox
+    // Default select all checkbox to true as requested
     const selectAllCheckbox = document.getElementById('select-all-participants');
-    if (selectAllCheckbox) selectAllCheckbox.checked = false;
+    if (selectAllCheckbox) selectAllCheckbox.checked = true;
     toggleDeleteButton();
 
     // Fix ARIA focus issues: ensure modal is visible before rendering content
@@ -4487,7 +4509,7 @@ function renderReviewTable(participants) {
             const tr = document.createElement('tr');
             tr.className = 'participant-row';
             tr.innerHTML = `
-                <td><input type="checkbox" class="participant-check" onchange="toggleParticipantSelection()" data-index="${index}"></td>
+                <td><input type="checkbox" class="participant-check" checked onchange="toggleParticipantSelection()" data-index="${index}"></td>
                 <td><input type="text" class="inline-edit ${validation.errors.dni ? 'field-error' : ''}" value="${p.dni || ''}" 
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'dni', this.value)"></td>
                 <td><input type="text" class="inline-edit" value="${p.nombres || ''}" 
@@ -4503,7 +4525,14 @@ function renderReviewTable(participants) {
                 <td style="text-align:center;"><input type="checkbox" ${p.certificado_autorizado !== false ? 'checked' : ''} 
                     onchange="updateLocalParticipant(${index}, 'certificado_autorizado', this.checked)"></td>
                 <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
-                <td><button type="button" class="btn-icon-remove" title="Eliminar" onclick="deleteSingleParticipant(${index})"><i class="ph ph-trash"></i></button></td>
+                <td style="display: flex; gap: 4px;">
+                    <button type="button" class="btn-icon" title="Previsualizar Constancia" onclick="previewSingleCertLocal(${index})">
+                        <i class="ph ph-eye"></i>
+                    </button>
+                    <button type="button" class="btn-icon-remove" title="Eliminar" onclick="deleteSingleParticipant(${index})">
+                        <i class="ph ph-trash"></i>
+                    </button>
+                </td>
             `;
             tableBody.appendChild(tr);
         });
@@ -4784,7 +4813,7 @@ function openReminderDraftModal(eventData, reqData) {
 
     // Configurar botón de revisión
     const btnReview = document.getElementById('btn-open-review-from-draft');
-    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id);
+    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id, false);
 
     // Asegurar que el modal de revisión esté por encima del borrador
     document.getElementById('participant-review-modal').style.zIndex = "2100";
@@ -4806,6 +4835,8 @@ window.closeReminderDraftModal = closeReminderDraftModal;
 // --- Lógica Borrador Constancias ---
 
 function openCertificatesDraftModal(eventData, reqData) {
+    window.currentDraftEventData = eventData;
+    window.currentDraftReqData = reqData;
     const modal = document.getElementById('certificate-draft-modal');
     if (!modal) return;
 
@@ -4838,7 +4869,7 @@ function openCertificatesDraftModal(eventData, reqData) {
 
     // Configurar botón de revisión
     const btnReview = document.getElementById('btn-open-review-from-cert');
-    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id);
+    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id, true);
 
     // Z-Index
     document.getElementById('participant-review-modal').style.zIndex = "2100";
@@ -4872,6 +4903,311 @@ window.openCertificatesDraftModal = openCertificatesDraftModal;
 window.closeCertificatesDraftModal = closeCertificatesDraftModal;
 window.copyCertificatesDraft = copyCertificatesDraft;
 
+function formatCertDates(event) {
+    let inicioStr = "";
+    let lastDateObj = new Date();
+
+    try {
+        const horarios = JSON.parse(event.horario || '[]');
+        if (horarios.length > 0) {
+            horarios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+            const first = new Date(horarios[0].fecha + "T00:00:00");
+            const last = new Date(horarios[horarios.length - 1].fecha + "T00:00:00");
+            lastDateObj = last;
+
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            if (horarios.length === 1 || first.getTime() === last.getTime()) {
+                inicioStr = `${first.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
+            } else {
+                if (first.getMonth() === last.getMonth()) {
+                    inicioStr = `${first.getDate()} al ${last.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
+                } else {
+                    inicioStr = `${first.getDate()} de ${months[first.getMonth()]} al ${last.getDate()} de ${months[last.getMonth()]} de ${first.getFullYear()}`;
+                }
+            }
+        } else {
+            const d = new Date((event.fecha_inicio || new Date().toISOString().split('T')[0]) + "T00:00:00");
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            inicioStr = `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
+            lastDateObj = d;
+        }
+    } catch (e) { console.error(e); }
+
+    const firmaDate = new Date(lastDateObj);
+    firmaDate.setDate(firmaDate.getDate() + 1);
+    const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const firmaStr = `${firmaDate.getDate()} de ${months[firmaDate.getMonth()]} de ${firmaDate.getFullYear()}`;
+
+    return { inicio: inicioStr, firma: firmaStr };
+}
+
+async function generateCertificatePDFLocal(p, event) {
+    const { jsPDF } = window.jspdf;
+
+    // Configurar fechas
+    let inicioStr = "";
+    let lastDateObj = new Date();
+    try {
+        const horarios = JSON.parse(event.horario || '[]');
+        if (horarios.length > 0) {
+            horarios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+            const first = new Date(horarios[0].fecha + "T00:00:00");
+            const last = new Date(horarios[horarios.length - 1].fecha + "T00:00:00");
+            lastDateObj = last;
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            if (horarios.length === 1 || first.getTime() === last.getTime()) {
+                inicioStr = `${first.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
+            } else if (first.getMonth() === last.getMonth()) {
+                inicioStr = `${first.getDate()} al ${last.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
+            } else {
+                inicioStr = `${first.getDate()} de ${months[first.getMonth()]} al ${last.getDate()} de ${months[last.getMonth()]} de ${first.getFullYear()}`;
+            }
+        } else {
+            const d = new Date((event.fecha_inicio || new Date().toISOString().split('T')[0]) + "T00:00:00");
+            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+            inicioStr = `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
+            lastDateObj = d;
+        }
+    } catch (e) { console.error(e); }
+
+    const firmaDate = new Date(lastDateObj);
+    firmaDate.setDate(firmaDate.getDate() + 1);
+    const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+    const firmaStr = `${firmaDate.getDate()} de ${months[firmaDate.getMonth()]} de ${firmaDate.getFullYear()}`;
+
+    // Crear PDF Paisaje
+    const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [1123, 794] // Tamaño de la imagen base
+    });
+
+    // Cargar imagen base
+    const imgPath = 'constancia_base.png';
+
+    return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.src = imgPath;
+        img.onload = () => {
+            // Dibujar imagen de fondo
+            pdf.addImage(img, 'PNG', 0, 0, 1123, 794);
+
+            // Configuración de texto
+            pdf.setTextColor(17, 43, 105); // Azul CERTUS (revisado de la imagen)
+
+            // 1. Apellidos y Nombres (Aumentado para mayor presencia)
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(42);
+            const fullName = `${(p.apellidos || '').toUpperCase()} ${(p.nombres || '').toUpperCase()}`.trim();
+            pdf.text(fullName, 561, 310, { align: 'center' });
+
+            // 2. "Por participar en el webinar"
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(18);
+            pdf.setTextColor(30, 41, 59); // Slate-800
+            pdf.text(`Por participar en el ${event.tipo || 'webinar'}`, 561, 410, { align: 'center' });
+
+            // 3. Nombre del Webinar (Más grande y bold)
+            pdf.setFont("helvetica", "bold");
+            pdf.setFontSize(32);
+            pdf.setTextColor(17, 43, 105);
+            pdf.text((event.nombre || '').toUpperCase(), 561, 450, { align: 'center' });
+
+            // 4. Texto legal/organizativo
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(15);
+            pdf.setTextColor(30, 41, 59);
+            const legalText = `organizado por la Dirección Académica de la Escuela de Educación Superior`;
+            pdf.text(legalText, 561, 495, { align: 'center' });
+
+            const legalText2 = `CERTUS, que se realizó el ${inicioStr}.`;
+            pdf.text(legalText2, 561, 515, { align: 'center' });
+
+            // 5. Fecha de firma (Lima, ...)
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(14);
+            pdf.setTextColor(100, 116, 139); // Slate-500
+            pdf.text(`Lima, ${firmaStr}`, 561, 575, { align: 'center' });
+
+            // 6. Código Correlativo de Registro (Folio)
+            pdf.setFont("helvetica", "normal");
+            pdf.setFontSize(9);
+            pdf.setTextColor(148, 163, 184); // Slate-400
+            const typePrefixes = { 'Webinar': 'WBN', 'Taller': 'TLR', 'Apertura Académica': 'APR', 'Curso': 'CUR', 'Seminario': 'SEM', 'Conferencia': 'CONF' };
+            const prefix = typePrefixes[event.tipo] || 'EVT';
+            const eventIdPart = String(event.id || '0').padStart(4, '0');
+            const studentIdPart = p.dni || '00000000';
+            const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
+            const regCode = `Folio N°: ${prefix}-${eventIdPart}-${studentIdPart}-${randomPart}`;
+            pdf.text(regCode, 45, 765);
+
+            // Guardar o Previsualizar
+            if (arguments[2] === true) { // Si el tercer argumento (isPreview) es true
+                const blobUrl = pdf.output('bloburl');
+                window.open(blobUrl, '_blank');
+            } else {
+                pdf.save(`${p.dni}_${event.sheet_id || 'CERT'}.pdf`);
+            }
+            resolve(pdf);
+        };
+        img.onerror = (err) => {
+            console.error("Error al cargar la imagen base:", err);
+            reject(err);
+        };
+    });
+}
+
+window.generateCertificatesPDF = async function () {
+    const event = window.currentDraftEventData;
+    const reqData = window.currentDraftReqData;
+
+    if (!event || !reqData || !reqData.folder_url) {
+        Swal.fire({
+            title: 'Datos incompleteos',
+            text: 'Falta la carpeta del evento o información necesaria para generar las constancias.',
+            icon: 'warning'
+        });
+        return;
+    }
+
+    const { isConfirmed, isDenied } = await Swal.fire({
+        title: 'Generar Constancias',
+        text: `¿Desea generar las constancias y subirlas al Drive o solo descargarlas localmente?`,
+        icon: 'question',
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: '<i class="ph ph-cloud-arrow-up"></i> Drive (GAS)',
+        denyButtonText: '<i class="ph ph-download-simple"></i> Descargar PDF Local',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#3b82f6',
+        denyButtonColor: '#10b981'
+    });
+
+    if (isDenied) {
+        // Generación Local
+        return window.generateCertificatesPDFLocalBulk();
+    }
+
+    if (!isConfirmed) return;
+
+    Swal.fire({
+        title: 'Buscando asistentes...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        let participants = [];
+        const reviewModal = document.getElementById('participant-review-modal');
+        const isReviewOpen = reviewModal && reviewModal.classList.contains('active');
+
+        if (isReviewOpen) {
+            const selectedChecks = document.querySelectorAll('.participant-check:checked');
+            if (selectedChecks.length > 0) {
+                const allParticipants = window.lastRenderedParticipants || [];
+                participants = Array.from(selectedChecks).map(cb => {
+                    const idx = parseInt(cb.getAttribute('data-index'));
+                    return allParticipants[idx];
+                }).filter(p => p !== undefined);
+                console.log("Using selected participants from modal:", participants.length);
+            }
+        }
+
+        // Si no hay selección manual o el modal no está abierto, buscar en Supabase (comportamiento por defecto)
+        if (participants.length === 0) {
+            const { data, error } = await window.supabaseClient
+                .from('participantes')
+                .select('*')
+                .eq('evento_id', event.id)
+                .eq('asistencia', true);
+
+            if (error) throw error;
+            participants = data || [];
+            console.log("Fetched all attendees from Supabase:", participants.length);
+        }
+
+        if (!participants || participants.length === 0) {
+            Swal.fire('Atención', 'No se encontraron participantes con asistencia marcada como TRUE para este evento.', 'info');
+            return;
+        }
+
+        Swal.fire({
+            title: 'Generando Constancias...',
+            text: `Procesando ${participants.length} certificados. Por favor espere, esto puede tardar unos minutos.`,
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const templateId = "13EI9UVUNQseSkoAWLxD3ctkAC0aiZttvNhkFB7dSem4";
+
+        // Formatear fecha del evento
+        let fechaEvento = event.fecha_inicio;
+        try {
+            const h = JSON.parse(event.horario || '[]');
+            if (h.length > 0 && h[0].fecha) fechaEvento = h[0].fecha;
+        } catch (e) { }
+
+        const gasPayload = {
+            action: "generar_constancias",
+            data: {
+                template_id: templateId,
+                participants: participants.map(p => ({ dni: p.dni, nombres: p.nombres, apellidos: p.apellidos })),
+                event_name: event.nombre,
+                event_type: event.tipo || "Webinar",
+                event_code: event.sheet_id || "EVENTO",
+                event_date: fechaEvento,
+                event_horario_json: event.horario || "[]",
+                folder_url: reqData.folder_url
+            }
+        };
+
+        const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
+            method: 'POST',
+            mode: 'cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(gasPayload)
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'ok') {
+            const updates = result.results.filter(r => r.status === 'success');
+            const errors = result.results.filter(r => r.status === 'error');
+
+            // Actualizar Supabase uno por uno
+            for (const item of updates) {
+                await window.supabaseClient
+                    .from('participantes')
+                    .update({ certificado_url: item.url })
+                    .eq('dni', item.dni)
+                    .eq('evento_id', event.id);
+            }
+
+            if (errors.length > 0) {
+                let errorMsg = `Se generaron ${updates.length} constancias, pero hubo ${errors.length} errores:\n`;
+                errors.forEach(e => errorMsg += `- DNI ${e.dni}: ${e.error}\n`);
+                Swal.fire({
+                    title: 'Procesado con observaciones',
+                    text: errorMsg,
+                    icon: 'warning'
+                });
+            } else {
+                Swal.fire({
+                    title: '¡Éxito!',
+                    text: `Se han generado y vinculado ${updates.length} constancias correctamente.`,
+                    icon: 'success'
+                });
+            }
+        } else {
+            throw new Error(result.error || result.message || "Error en la respuesta de Google.");
+        }
+
+    } catch (err) {
+        console.error("Error en generación:", err);
+        Swal.fire('Error', 'Hubo un fallo crítico al generar o guardar las constancias: ' + err.message, 'error');
+    }
+};
+
 // --- Fin Lógica Borrador ---
 
 window.openParticipantReviewModal = openParticipantReviewModal;
@@ -4881,6 +5217,183 @@ window.deleteSingleParticipant = deleteSingleParticipant;
 window.deleteSelectedParticipants = deleteSelectedParticipants;
 window.addParticipantsToDraft = addParticipantsToDraft;
 window.copyReminderDraft = copyReminderDraft;
+
+window.previewSingleCertLocal = async function (index) {
+    const p = window.lastRenderedParticipants[index];
+    // Intentar obtener el evento del borrador o del contexto de revisión
+    let event = window.currentDraftEventData;
+    if (!event && window.currentEventIdForReview) {
+        event = (window.allEventsData || []).find(e => String(e.id) === String(window.currentEventIdForReview));
+    }
+
+    if (!p || !event) {
+        Swal.fire('Error', 'No se pudieron cargar los datos del participante o del evento.', 'error');
+        return;
+    }
+
+    Swal.fire({
+        title: 'Generando Vista Previa...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        // Generar el PDF y mostrarlo en una nueva pestaña (blob url)
+        // Reutilizamos la lógica de dibujo interna de generateCertificatePDFLocal
+        // pero capturamos el objeto pdf si fuera posible o simplemente usamos la función
+        // que ya existe y que guarda. Pero el usuario pidió PREVISUALIZAR.
+        // Modificaré generateCertificatePDFLocal para que acepte un flag de preview.
+        await generateCertificatePDFLocal(p, event, true);
+        Swal.close();
+    } catch (err) {
+        Swal.fire('Error', 'No se pudo generar la vista previa: ' + err.message, 'error');
+    }
+};
+
+window.confirmSelectedAsistentes = async function () {
+    const selectedChecks = document.querySelectorAll('.participant-check:checked');
+    if (selectedChecks.length === 0) {
+        Swal.fire('Atención', 'Por favor seleccione al menos un participante.', 'warning');
+        return;
+    }
+
+    const allParticipants = window.lastRenderedParticipants || [];
+    const participants = Array.from(selectedChecks).map(cb => {
+        const idx = parseInt(cb.getAttribute('data-index'));
+        return allParticipants[idx];
+    }).filter(p => p !== undefined);
+
+    const result = await Swal.fire({
+        title: '¿Confirmar Asistentes?',
+        text: `Se marcarán ${participants.length} participantes como aptos para su constancia y se agregarán a la lista de envío.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, confirmar y agregar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#10b981'
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+        title: 'Procesando...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const ids = participants.map(p => p.id);
+
+        // 1. Actualizar Supabase (asistencia y autorizado)
+        const { error } = await window.supabaseClient
+            .from('participantes')
+            .update({
+                asistencia: true,
+                certificado_autorizado: true
+            })
+            .in('id', ids);
+
+        if (error) throw error;
+
+        // 2. Agregar a los destinatarios (CCO) en los borradores visibles
+        const emails = participants.map(p => p.correo).filter(e => e && e.includes('@')).join(', ');
+
+        const certCco = document.getElementById('cert-draft-cco');
+        const remCco = document.getElementById('rem-draft-cco');
+
+        if (certCco) {
+            const current = certCco.value.trim();
+            certCco.value = current ? `${current}, ${emails}` : emails;
+        }
+        if (remCco) {
+            const current = remCco.value.trim();
+            remCco.value = current ? `${current}, ${emails}` : emails;
+        }
+
+        Swal.fire({
+            title: '¡Confirmado!',
+            text: `${participants.length} asistentes procesados. Se han actualizado en la base de datos y agregado a los borradores de envío.`,
+            icon: 'success'
+        });
+
+        // Recargar la tabla si el modal sigue abierto
+        openParticipantReviewModal(window.currentEventIdForReview, true);
+
+    } catch (err) {
+        console.error(err);
+        Swal.fire('Error', 'No se pudo completar la operación: ' + err.message, 'error');
+    }
+};
+
+window.generateCertificatesPDFLocalBulk = async function () {
+    const event = window.currentDraftEventData;
+    if (!event) return;
+
+    let participants = [];
+    const reviewModal = document.getElementById('participant-review-modal');
+    const isReviewOpen = reviewModal && reviewModal.classList.contains('active');
+
+    if (isReviewOpen) {
+        const selectedChecks = document.querySelectorAll('.participant-check:checked');
+        if (selectedChecks.length > 0) {
+            const allParticipants = window.lastRenderedParticipants || [];
+            participants = Array.from(selectedChecks).map(cb => {
+                const idx = parseInt(cb.getAttribute('data-index'));
+                return allParticipants[idx];
+            }).filter(p => p !== undefined);
+        }
+    }
+
+    if (participants.length === 0) {
+        // Fallback: cargar asistentes de Supabase
+        const { data, error } = await window.supabaseClient
+            .from('participantes')
+            .select('*')
+            .eq('evento_id', event.id)
+            .eq('asistencia', true);
+
+        if (error) {
+            Swal.fire('Error', 'No se pudieron cargar los asistentes.', 'error');
+            return;
+        }
+        participants = data || [];
+    }
+
+    if (participants.length === 0) {
+        Swal.fire('Atención', 'No hay participantes seleccionados o con asistencia marked.', 'info');
+        return;
+    }
+
+    const { isConfirmed } = await Swal.fire({
+        title: 'Descarga Masiva',
+        text: `Se descargarán ${participants.length} certificados localmente. ¿Continuar?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, descargar todos',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!isConfirmed) return;
+
+    Swal.fire({
+        title: 'Procesando...',
+        text: 'Generando archivos PDF uno por uno. El navegador podría pedir permiso para múltiples descargas.',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    for (const p of participants) {
+        try {
+            await generateCertificatePDFLocal(p, event);
+            // Pequeña pausa para no saturar el buffer de descarga del navegador (opcional)
+            await new Promise(r => setTimeout(r, 300));
+        } catch (e) {
+            console.error("Error al generar PDF local:", e);
+        }
+    }
+
+    Swal.fire('¡Listo!', `${participants.length} certificados procesados para descarga.`, 'success');
+};
 
 window.addEventListener('click', (e) => {
     const modal = document.getElementById('status-modal');
@@ -4906,12 +5419,360 @@ window.addEventListener('click', (e) => {
     }
 });
 
+// ==========================================
+// COMUNICACION MODULE LOGIC
+// ==========================================
+$(document).ready(function () {
+    let currentComEventId = null;
+    let comParticipants = [];
+
+    // On Event Change
+    $('#comunicacion-event-selector').on('change', async function () {
+        currentComEventId = $(this).val();
+        loadComParticipants();
+    });
+
+    async function loadComParticipants() {
+        const tbody = document.getElementById('com-participants-tbody');
+        const statusSpan = document.getElementById('com-table-status');
+
+        if (!currentComEventId) return;
+
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem;">Cargando...</td></tr>';
+        statusSpan.textContent = 'Cargando datos...';
+
+        try {
+            const { data, error } = await window.supabaseClient
+                .from('participantes')
+                .select('*')
+                .eq('evento_id', currentComEventId)
+                .order('apellidos', { ascending: true });
+
+            if (error) throw error;
+            comParticipants = data || [];
+            renderComTable();
+        } catch (error) {
+            console.error(error);
+            tbody.innerHTML = `<tr><td colspan="7" style="color:red; text-align:center;">Error al cargar datos: ${error.message}</td></tr>`;
+            statusSpan.textContent = 'Error de carga';
+        }
+    }
+
+    function renderComTable() {
+        const tbody = document.getElementById('com-participants-tbody');
+        const statusSpan = document.getElementById('com-table-status');
+
+        tbody.innerHTML = '';
+        if (comParticipants.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 2rem;">No hay participantes registrados para este evento.</td></tr>';
+            statusSpan.textContent = '0 participantes';
+
+            // Re-bind even if empty so Add Row works natively
+            attachComTableEvents();
+            return;
+        }
+
+        comParticipants.forEach((p, index) => {
+            const tr = document.createElement('tr');
+            tr.dataset.index = index;
+            tr.innerHTML = `
+                <td style="text-align:center;"><input type="checkbox" class="com-row-check" value="${index}"></td>
+                <td contenteditable="true" class="editable-cell" data-field="dni">${p.dni || ''}</td>
+                <td contenteditable="true" class="editable-cell" data-field="apellidos">${p.apellidos || ''}</td>
+                <td contenteditable="true" class="editable-cell" data-field="nombres">${p.nombres || ''}</td>
+                <td contenteditable="true" class="editable-cell" data-field="correo">${p.correo || ''}</td>
+                <td contenteditable="true" class="editable-cell" data-field="telefono">${p.telefono || ''}</td>
+                <td>
+                    <button class="btn-icon-remove com-row-delete" title="Eliminar"><i class="ph ph-trash"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        statusSpan.textContent = `${comParticipants.length} participantes (cambios locales sin guardar)`;
+        attachComTableEvents();
+        updateGeneratedEmails();
+    }
+
+    function attachComTableEvents() {
+        // Editable cells
+        document.querySelectorAll('.editable-cell').forEach(cell => {
+            cell.addEventListener('blur', function () {
+                const tr = this.closest('tr');
+                const idx = tr.dataset.index;
+                const field = this.dataset.field;
+                comParticipants[idx][field] = this.innerText.trim();
+                document.getElementById('com-table-status').textContent = 'Hay cambios sin guardar';
+            });
+        });
+
+        // Delete Row
+        document.querySelectorAll('.com-row-delete').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const tr = this.closest('tr');
+                const idx = parseInt(tr.dataset.index);
+                // Si la fila tiene ID (ya estaba en Supabase), advertimos que se debe guardar.
+                comParticipants.splice(idx, 1);
+                renderComTable();
+            });
+        });
+
+        // Select All
+        const selectAll = document.getElementById('com-select-all');
+        if (selectAll) {
+            const newSelectAll = selectAll.cloneNode(true);
+            selectAll.parentNode.replaceChild(newSelectAll, selectAll);
+
+            newSelectAll.addEventListener('change', function () {
+                const isChecked = this.checked;
+                document.querySelectorAll('.com-row-check').forEach(cb => {
+                    cb.checked = isChecked;
+                });
+                updateGeneratedEmails();
+            });
+        }
+
+        // Individual checks
+        document.querySelectorAll('.com-row-check').forEach(cb => {
+            cb.addEventListener('change', updateGeneratedEmails);
+        });
+    }
+
+    function updateGeneratedEmails() {
+        const textarea = document.getElementById('com-generated-emails');
+        if (!textarea) return;
+
+        const checked = Array.from(document.querySelectorAll('.com-row-check:checked'))
+            .map(cb => parseInt(cb.value));
+
+        const emails = checked.map(idx => comParticipants[idx].correo)
+            .filter(e => e && e.includes('@'));
+        textarea.value = emails.join(', ');
+    }
+
+    // Export CSV Contacts
+    document.getElementById('btn-com-export-csv')?.addEventListener('click', async function () {
+        if (!currentComEventId || comParticipants.length === 0) {
+            Swal.fire('Atención', 'No hay datos para exportar', 'warning');
+            return;
+        }
+
+        const { value: etiqueta } = await Swal.fire({
+            title: 'Etiqueta para contactos',
+            text: 'Se añadirá al principio de cada nombre',
+            input: 'text',
+            inputPlaceholder: 'Ej: costos, webinarX, ventas',
+            inputValue: 'costos', // valor por defecto
+            showCancelButton: true,
+            confirmButtonText: '<i class="ph ph-download-simple"></i> Exportar CSV',
+            cancelButtonText: 'Cancelar',
+            inputValidator: (value) => {
+                if (!value.trim()) {
+                    return '¡Debe ingresar una etiqueta!';
+                }
+            }
+        });
+
+        if (!etiqueta) return;
+
+        // Google Contacts Headers (Usando \r\n para Excel/Windows Notepad)
+        let csvContent = "First Name,Middle Name,Last Name,Phonetic First Name,Phonetic Middle Name,Phonetic Last Name,Name Prefix,Name Suffix,Nickname,File As,Organization Name,Organization Title,Organization Department,Birthday,Notes,Photo,Labels,Phone 1 - Label,Phone 1 - Value\r\n";
+
+        comParticipants.forEach(p => {
+            const firstName = `${etiqueta}_${p.nombres || ''}`.trim();
+            const lastName = (p.apellidos || '').trim();
+            const phone = p.telefono || '';
+            const formattedPhone = phone && !phone.startsWith('+51') ? `+51${phone.replace(/\s/g, '')}` : phone.replace(/\s/g, '');
+
+            // Usando \r\n para el salto de línea
+            csvContent += `"${firstName}",,"${lastName}",,,,,,,,,,,,,,* myContacts,Mobile,"${formattedPhone}"\r\n`;
+        });
+
+        // "\ufeff" es el BOM de UTF-8 que Excel necesita para leer tildes correctamente
+        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        // Formatear el nombre del archivo: etiqueta_listado de contactos.csv
+        link.setAttribute("download", `${etiqueta}_listado de contactos.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    });
+
+    // Add Manual Row
+    document.getElementById('btn-com-add-row')?.addEventListener('click', function () {
+        if (!currentComEventId) {
+            Swal.fire('Atención', 'Seleccione un evento primero', 'warning');
+            return;
+        }
+        comParticipants.unshift({
+            evento_id: currentComEventId,
+            dni: '', apellidos: '', nombres: '', correo: '', telefono: '', asistencia: false
+        });
+        renderComTable();
+    });
+
+    // Save DB
+    document.getElementById('btn-com-save-db')?.addEventListener('click', async function () {
+        if (!currentComEventId) {
+            Swal.fire('Atención', 'Seleccione un evento', 'warning');
+            return;
+        }
+
+        const result = await Swal.fire({
+            title: '¿Guardar Cambios?',
+            text: 'Esto sobreescribirá los datos del evento en Supabase. Se añadirán los nuevos, se actualizarán los modificados. Las filas eliminadas AQUÍ se deben eliminar manualmente de la BD, ¿Desea proceder guardando los registros actuales?',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Guardar',
+            cancelButtonText: 'Cancelar'
+        });
+
+        if (result.isConfirmed) {
+            Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+                // To avoid sending rows with no names at all
+                const toSave = comParticipants.filter(p => (p.nombres || p.apellidos || p.dni));
+
+                // Limpiar campos nulos que rompen Supabase (o dejarlos)
+                toSave.forEach(p => {
+                    if (!p.id) delete p.id; // ensure UUID is generated by Supabase if missing
+                });
+
+                const { error } = await window.supabaseClient
+                    .from('participantes')
+                    .upsert(toSave, { onConflict: 'id', ignoreDuplicates: false });
+
+                if (error) throw error;
+                Swal.fire('Guardado', 'Datos sincronizados correctamente con Supabase.', 'success');
+                loadComParticipants();
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'Error al guardar en Supabase: ' + err.message, 'error');
+            }
+        }
+    });
+
+    // Delete Selected List (Local)
+    document.getElementById('btn-com-delete-selected')?.addEventListener('click', async function () {
+        const checks = Array.from(document.querySelectorAll('.com-row-check:checked'));
+        if (checks.length === 0) return;
+
+        const result = await Swal.fire({
+            title: 'Atención',
+            text: '¿Desea eliminar las filas seleccionadas? NOTA: Para eliminarlas permanentemente de la BD debe ir a Supabase, esto solo las quitará localmente y de la tabla actual.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Eliminar localmente'
+        });
+
+        if (result.isConfirmed) {
+            const indices = checks.map(cb => parseInt(cb.value));
+            comParticipants = comParticipants.filter((_, idx) => !indices.includes(idx));
+            renderComTable();
+        }
+    });
+
+    // Import CSV (Local Parsing and Merging)
+    document.getElementById('com-csv-input')?.addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: function (results) {
+                const rows = results.data;
+                let added = 0;
+                rows.forEach(row => {
+                    const keys = Object.keys(row);
+                    const getVal = (keywords) => {
+                        const key = keys.find(k => keywords.some(kw => k.toLowerCase().includes(kw)));
+                        return key ? row[key].trim() : '';
+                    };
+
+                    const dni = getVal(['dni', 'documento', 'identidad']);
+                    const apellidos = getVal(['apellidos']);
+                    // Some forms use 'nombres y apellidos' -> fallback array ordering matters
+                    const nombres = getVal(['nombres', 'nombre']) || getVal(['nombres y apellidos']);
+                    const correo = getVal(['correo', 'email']);
+                    const telefono = getVal(['teléfono', 'celular', 'phone', 'telef']);
+
+                    if (apellidos || nombres || correo || dni) {
+                        comParticipants.push({
+                            evento_id: currentComEventId,
+                            dni: dni.substring(0, 15),
+                            nombres: nombres,
+                            apellidos: apellidos,
+                            correo: correo,
+                            telefono: telefono,
+                            asistencia: true
+                        });
+                        added++;
+                    }
+                });
+                if (added > 0) {
+                    renderComTable();
+                    Swal.fire('Importado', `Se añadieron ${added} filas desde el CSV (Presione Guardar Cambios para enviarlo a BD).`, 'success');
+                } else {
+                    Swal.fire('Aviso', 'No se encontraron datos listos en el CSV (Revise las cabeceras).', 'warning');
+                }
+                e.target.value = '';
+            }
+        });
+    });
+
+    // Templates Logic
+    const msgTemplateType = document.getElementById('msg-template-type');
+    const msgSubjectGroup = document.getElementById('msg-subject-group');
+    const msgSubject = document.getElementById('msg-subject');
+    const msgBody = document.getElementById('msg-body');
+
+    const templates = {
+        email_constancia: {
+            subject: 'Su Constancia de Participación - {curso}',
+            body: 'Estimado/a {nombre_completo},\n\nAdjuntamos a este correo su constancia por haber participado en el evento "{curso}" realizado el {fecha}.\n\nAtentamente,\nEl Equipo Académico'
+        },
+        email_recordatorio: {
+            subject: 'Recordatorio Iniciamos pronto - {curso}',
+            body: '¡Hola {nombre}!\n\nTe recordamos que pronto estaremos iniciando nuestro evento "{curso}".\nNo olvides conectarte puntual.\n\nSaludos.'
+        },
+        wsp_delegados: {
+            subject: '',
+            body: '¡Hola estimado delegado {nombre}!\n\nLe comunicamos que el evento "{curso}" está por iniciar. Apreciaremos mucho que pueda compartir este recordatorio con su grupo.\n\n¡Gracias por su apoyo!'
+        },
+        wsp_recordatorio: {
+            subject: '',
+            body: '¡Hola {nombre}!\n\nNo olvides que hoy tenemos el evento: "{curso}".\n\n¡Te esperamos!'
+        }
+    };
+
+    msgTemplateType?.addEventListener('change', function () {
+        if (!this.value) return;
+        const val = this.value;
+        if (val.startsWith('wsp_')) {
+            msgSubjectGroup.style.display = 'none';
+        } else {
+            msgSubjectGroup.style.display = 'block';
+        }
+
+        msgSubject.value = templates[val].subject;
+        msgBody.value = templates[val].body;
+    });
+
+    if (msgTemplateType) {
+        msgTemplateType.dispatchEvent(new Event('change'));
+    }
+});
+
 function closeParticipantReviewModal() {
     const modal = document.getElementById('participant-review-modal');
     modal.classList.remove('active');
     modal.setAttribute('aria-hidden', 'true');
     // Restaurar acceso al contenedor principal SOLO SI NO hay otros modales abiertos
     if (!document.getElementById('reminder-draft-modal').classList.contains('active') &&
+        !document.getElementById('certificate-draft-modal').classList.contains('active') &&
         !document.getElementById('status-modal').classList.contains('active')) {
         document.querySelector('.app-container')?.setAttribute('aria-hidden', 'false');
     }

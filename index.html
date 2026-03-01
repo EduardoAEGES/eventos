@@ -25,6 +25,10 @@
     <!-- PapaParse para procesado robusto de CSV -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 
+    <!-- PDF Generation Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
     <!-- jQuery y Select2 para Autocompletado Búsqueda en Selects -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -101,7 +105,7 @@
                         Portal Alumnos
                     </button>
                     <button class="btn-primary"
-                        onclick="window.open('https://automatizardocumentos-pln-s8i2.onrender.com/', '_blank')"
+                        onclick="window.open('https://eduardoaeges.github.io/eventos/', '_blank')"
                         style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
                         <i class="ph ph-arrow-square-out" style="font-size: 1.2rem;"></i>
                         Abrir Aplicación
@@ -218,94 +222,151 @@
             <!-- Sección: Comunicación -->
             <section id="comunicacion" class="content-section">
                 <div class="section-header">
-                    <h2>Gestión de Comunicación</h2>
-                    <p>Configura las plantillas de correo y mensajes.</p>
+                    <h2>Gestión de Comunicación y Participantes</h2>
+                    <p>Administra la lista de participantes del evento y configura envíos masivos (Email/WhatsApp).</p>
                 </div>
 
-                <!-- Importación de Datos (Movido a Generación) -->
+                <!-- 1. Selección de Evento -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <h3><i class="ph ph-calendar-check"></i> 1. Seleccione el Evento</h3>
+                    <select id="comunicacion-event-selector" class="input-modern" style="max-width: 600px;">
+                        <option value="" disabled selected>Cargando eventos...</option>
+                    </select>
+                </div>
 
-                <div class="grid-layout">
-                    <div class="card">
-                        <h3><i class="ph ph-envelope-simple"></i> Plantilla de Correo</h3>
-                        <form class="template-form">
-                            <div class="form-group">
-                                <label>Asunto del Correo</label>
-                                <input type="text" placeholder="Ej: Su constancia de participación..."
-                                    class="input-modern">
-                            </div>
-                            <div class="form-group">
-                                <label>Cuerpo del Mensaje</label>
-                                <textarea placeholder="Hola {nombre}, adjunto encontrarás..."
-                                    class="input-modern area"></textarea>
-                            </div>
-                            <div class="form-actions">
-                                <button t ype="button" class="btn-secondary">Vista Previa</button>
-                                <button type="button" class="btn-primary">Guardar Plantilla</button>
-                            </div>
-                        </form>
+                <!-- 2. Base de Datos de Participantes -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+                        <h3><i class="ph ph-users"></i> 2. Base de Datos de Participantes</h3>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <input type="file" id="com-csv-input" accept=".csv" style="display: none;">
+                            <button id="btn-com-import-csv" class="btn-secondary small"
+                                onclick="document.getElementById('com-csv-input').click()"><i
+                                    class="ph ph-upload-simple"></i> Importar CSV</button>
+                            <button id="btn-com-export-csv" class="btn-secondary small"><i
+                                    class="ph ph-download-simple"></i> Exportar a CSV (Contactos Google)</button>
+                            <button id="btn-com-add-row" class="btn-primary small"><i class="ph ph-plus"></i> Añadir
+                                Fila Manual</button>
+                        </div>
                     </div>
 
-                    <div class="card">
-                        <h3><i class="ph ph-list-dashes"></i> Variables Disponibles</h3>
-                        <ul class="variables-list">
-                            <li><code>{nombre}</code> - Nombre del destinatario</li>
-                            <li><code>{curso}</code> - Nombre del curso/evento</li>
-                            <li><code>{fecha}</code> - Fecha de emisión</li>
-                            <li><code>{codigo}</code> - Código único</li>
-                        </ul>
+                    <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+                        La siguiente tabla es <b>editable directamente</b>. Haz clic sobre cualquier celda para corregir
+                        nombres, correos o teléfonos.
+                    </p>
+
+                    <div
+                        style="overflow-x: auto; max-height: 400px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <table class="data-table" id="com-participants-table" style="min-width: 900px;">
+                            <thead style="position: sticky; top: 0; background: var(--bg-color); z-index: 10;">
+                                <tr>
+                                    <th width="50" style="text-align: center;"><input type="checkbox"
+                                            id="com-select-all" title="Seleccionar Todos"></th>
+                                    <th width="100">DNI</th>
+                                    <th>Apellidos</th>
+                                    <th>Nombres</th>
+                                    <th>Correo Electrónico</th>
+                                    <th width="120">Teléfono</th>
+                                    <th width="60">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="com-participants-tbody">
+                                <tr>
+                                    <td colspan="7" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                                        Selecciona un evento para cargar los participantes.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div
+                        style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <span id="com-table-status" style="color: var(--text-muted); font-size: 0.9rem;">Esperando
+                            selección de evento...</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="btn-com-delete-selected" class="btn-secondary"
+                                style="border-color: rgba(248, 113, 113, 0.5); color: #f87171;">
+                                <i class="ph ph-trash"></i> Eliminar Selección
+                            </button>
+                            <button id="btn-com-save-db" class="btn-primary"
+                                style="background: #10b981; border-color: #059669;">
+                                <i class="ph ph-floppy-disk"></i> Guardar Cambios en Supabase
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div class="card"
-                    style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 2rem;">
-                    <h3><i class="ph ph-paper-plane-tilt"></i> Generar Datos para Envío (Manual)</h3>
 
-                    <div class="card"
-                        style="margin-bottom: 2rem; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2);">
-                        <h4 style="color: #f59e0b; margin-bottom: 0.5rem;"><i class="ph ph-warning-circle"></i>
-                            Importante</h4>
-                        <p style="font-size: 0.9rem; color: var(--text-muted);">
-                            Al usar este método (copiar y pegar en CCO/BCC), todos recibirán el <b>mismo mensaje
-                                genérico</b>.
-                            No es posible personalizar nombres individuales automáticamente en este modo.
-                        </p>
-                    </div>
+                <!-- 3. Mensajería y Plantillas -->
+                <div class="card">
+                    <h3><i class="ph ph-paper-plane-tilt"></i> 3. Generación de Mensajes Generales</h3>
+                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                        Configura plantillas y copia el contenido para mensajes masivos.
+                    </p>
 
-                    <div class="form-group">
-                        <label>1. Lista de Correos (Para pegar en CCO / BCC)</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <textarea id="manual-emails" class="input-modern area" readonly
-                                style="height: 100px; font-family: monospace; font-size: 0.85rem;"
-                                placeholder="Aquí aparecerán los correos de la lista importada..."></textarea>
-                            <button class="btn-secondary" onclick="copyToClipboard('manual-emails')" title="Copiar"><i
-                                    class="ph ph-copy"></i></button>
+                    <div class="grid-layout" style="grid-template-columns: 2fr 1fr;">
+                        <div
+                            style="background: rgba(0,0,0,0.1); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                            <div class="form-group">
+                                <label>Tipo de Plantilla</label>
+                                <select id="msg-template-type" class="input-modern">
+                                    <option value="email_constancia">Correo: Envío de Constancia</option>
+                                    <option value="email_recordatorio">Correo: Recordatorio de Evento</option>
+                                    <option value="wsp_delegados">WhatsApp: Aviso a Delegados</option>
+                                    <option value="wsp_recordatorio">WhatsApp: Recordatorio General</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group" id="msg-subject-group">
+                                <label>Asunto (Para correos masivos)</label>
+                                <input type="text" id="msg-subject" class="input-modern"
+                                    placeholder="Ej: Su constancia de participación...">
+                            </div>
+
+                            <div class="form-group">
+                                <label>Cuerpo del Mensaje Base</label>
+                                <textarea id="msg-body" class="input-modern area" style="height: 150px;"
+                                    placeholder="Escribe tu mensaje usando las variables disponibles..."></textarea>
+                            </div>
+
+                            <div class="action-bar" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                <button id="btn-msg-save-template" class="btn-secondary small"><i
+                                        class="ph ph-floppy-disk"></i> Guardar Plantilla Local</button>
+                                <button id="btn-msg-copy-body" class="btn-primary small"><i class="ph ph-copy"></i>
+                                    Copiar Cuerpo</button>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>2. Asunto Final</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="manual-subject" class="input-modern" readonly
-                                placeholder="Se copiará del formulario de arriba...">
-                            <button class="btn-secondary" onclick="copyToClipboard('manual-subject')" title="Copiar"><i
-                                    class="ph ph-copy"></i></button>
+                        <div
+                            style="background: rgba(0,0,0,0.1); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                            <h4><i class="ph ph-list-dashes"></i> Variables</h4>
+                            <ul class="variables-list" style="margin-top: 0.5rem; font-size: 0.85rem;">
+                                <li><code>{nombre}</code> - Nombres</li>
+                                <li><code>{apellido}</code> - Apellidos</li>
+                                <li><code>{nombre_completo}</code> - Nombres y Apellidos</li>
+                                <li><code>{curso}</code> - Nombre del evento</li>
+                                <li><code>{fecha}</code> - Fecha del evento</li>
+                            </ul>
+                            <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px;">* Nota: Las
+                                variables solo funcionan con un sistema de envío individual, no en CCO manual general.
+                            </p>
+
+                            <div
+                                style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                                <h4>Generar Lista de Correos</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Copia los
+                                    correos de las personas marcadas con check en la tabla.</p>
+                                <textarea id="com-generated-emails" class="input-modern area" readonly
+                                    style="height: 60px; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.5rem;"
+                                    placeholder="correo1, correo2..."></textarea>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn-secondary small" style="flex: 1;"
+                                        onclick="copyToClipboard('com-generated-emails')"><i class="ph ph-copy"></i>
+                                        Copiar Correos</button>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-
-                    <div class="form-group">
-                        <label>3. Cuerpo del Mensaje Final (Genérico)</label>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <textarea id="manual-body" class="input-modern area" readonly style="height: 200px;"
-                                placeholder="Se generará una versión limpia del mensaje..."></textarea>
-                            <button class="btn-secondary" onclick="copyToClipboard('manual-body')" title="Copiar"><i
-                                    class="ph ph-copy"></i></button>
-                        </div>
-                    </div>
-
-                    <div class="action-bar" style="margin-top: 1rem;">
-                        <button id="btn-generate-manual" class="btn-primary large"><i
-                                class="ph ph-arrows-clockwise"></i> Generar Datos Ahora</button>
-                        <a id="mailto-link" href="#" class="btn-secondary large hidden" target="_blank"><i
-                                class="ph ph-envelope-open"></i> Abrir Correo</a>
                     </div>
                 </div>
             </section>
@@ -806,7 +867,7 @@
     <div id="participant-review-modal" class="modal-overlay" style="z-index: 2001;" aria-hidden="false">
         <div class="modal-content participant-review-modal">
             <div class="modal-header">
-                <h2><i class="ph ph-users"></i> Revisión de Inscritos</h2>
+                <h2 id="participant-review-title"><i class="ph ph-users"></i> Revisión de Inscritos</h2>
                 <button class="close-modal" onclick="closeParticipantReviewModal()"><i class="ph ph-x"></i></button>
             </div>
             <div class="modal-body">
@@ -848,15 +909,18 @@
                         onclick="deleteSelectedParticipants()">
                         <i class="ph ph-trash"></i> Eliminar Seleccionados
                     </button>
-                    <button type="button" id="btn-add-recipients" class="btn-secondary"
-                        style="color: #60a5fa; border-color: rgba(99, 102, 241, 0.3);"
-                        onclick="addParticipantsToDraft()">
-                        <i class="ph ph-user-plus"></i> Agregar Destinatarios
+                    <button type="button" class="btn-secondary"
+                        onclick="window.open('https://eduardoaeges.github.io/eventos/portal.html', '_blank')">
+                        <i class="ph ph-student"></i> Ir al Portal
                     </button>
                 </div>
                 <div style="display: flex; gap: 0.5rem;">
                     <button type="button" class="btn-secondary" onclick="closeParticipantReviewModal()">Cerrar</button>
-                    <button type="button" id="btn-save-participants" class="btn-primary">Guardar Cambios</button>
+                    <button type="button" id="btn-confirm-asistentes" class="btn-primary"
+                        style="background: #10b981; border: none;" onclick="confirmSelectedAsistentes()">
+                        <i class="ph ph-check-circle"></i> Confirmar y Agregar
+                    </button>
+                    <button type="button" id="btn-save-participants" class="btn-secondary">Guardar Cambios</button>
                 </div>
             </div>
         </div>
@@ -971,14 +1035,47 @@
                 </button>
                 <button id="btn-open-review-from-cert" class="btn-secondary"
                     style="color: white; background: #10b981; border: none;">
-                    <i class="ph ph-users"></i> Revisar Inscritos (Sync)
+                    <i class="ph ph-users"></i> Revisar Asistentes (Sync)
                 </button>
                 <button onclick="closeCertificatesDraftModal()" class="btn-secondary">Cerrar</button>
             </div>
         </div>
     </div>
 
-    <script src="script.js?v=2026-v7-retroceder"></script>
+    <!-- Hidden Certificate Template for PDF Generation -->
+    <div id="certificate-template"
+        style="position: absolute; left: -9999px; top: -9999px; width: 1123px; height: 794px; background: white; font-family: 'Outfit', sans-serif; overflow: hidden;">
+        <img src="constancia_base.png" style="width: 100%; height: 100%; object-fit: contain;">
+
+        <!-- Dinamic Content Overlays -->
+        <div id="cert-names"
+            style="position: absolute; top: 350px; left: 0; width: 100%; text-align: center; font-size: 38px; font-weight: 700; color: #000; text-transform: uppercase;">
+            APELLIDOS Y NOMBRES DEL ALUMNO
+        </div>
+
+        <div id="cert-event-type"
+            style="position: absolute; top: 455px; left: 0; width: 100%; text-align: center; font-size: 18px; color: #333;">
+            Por participar en el <span id="cert-type-text">Webinar</span>
+        </div>
+
+        <div id="cert-event-name"
+            style="position: absolute; top: 485px; left: 0; width: 100%; text-align: center; font-size: 28px; font-weight: 700; color: #003399;">
+            NOMBRE DEL EVENTO O WEBINAR
+        </div>
+
+        <div id="cert-dates"
+            style="position: absolute; top: 525px; left: 160px; right: 160px; text-align: center; font-size: 16px; color: #333; line-height: 1.4;">
+            organizado por la Dirección Académica de la Escuela de Educación Superior CERTUS, que se realizó el <span
+                id="cert-date-range">15 de Mayo de 2026</span>.
+        </div>
+
+        <div id="cert-firma-date"
+            style="position: absolute; top: 670px; left: 0; width: 100%; text-align: center; font-size: 14px; color: #666;">
+            Lima, <span id="cert-date-firma">16 de Mayo de 2026</span>
+        </div>
+    </div>
+
+    <script src="script.js?v=2026-v7.1-fix"></script>
 </body>
 
 </html>
