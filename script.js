@@ -147,64 +147,47 @@ document.addEventListener('DOMContentLoaded', () => {
     const audienceCheckboxes = document.querySelectorAll('.audience-check');
     const summaryText = document.getElementById('audience-summary-text');
 
-    function updateAudienceSummary() {
-        const checked = Array.from(audienceCheckboxes).filter(cb => cb.checked);
-        const values = checked.map(cb => cb.value);
-
+    function getFriendlyAudienceText(values) {
         const allCycles = ['1', '2', '3', '4', '5', '6+'];
         const selectedCycles = values.filter(v => allCycles.includes(v));
         const hasDocentes = values.includes('Docentes');
         const hasPublico = values.includes('Publico');
-
-        let text = '';
-
-        // Logic 1: Todos los ciclos
         const allCyclesSelected = allCycles.every(c => values.includes(c));
 
+        let text = '';
         if (hasDocentes && allCyclesSelected) {
             text = 'Comunidad académica';
         } else if (allCyclesSelected) {
             text = 'Todos los estudiantes';
         } else if (selectedCycles.length > 0) {
-            // Logic 2: Ranges
-            // Sort cycles to find min/max
             const cycleMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6+': 6 };
             const sorted = selectedCycles.map(c => cycleMap[c]).sort((a, b) => a - b);
 
             if (sorted.length === 1) {
                 const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to a más' };
-                text = `Estudiantes de ${mapBack[sorted[0]]} ciclo`;
+                text = `estudiantes de ${mapBack[sorted[0]]} ciclo`;
             } else if (sorted.length > 1) {
                 const min = sorted[0];
                 const max = sorted[sorted.length - 1];
-
                 let isContiguous = true;
                 for (let i = 0; i < sorted.length - 1; i++) {
                     if (sorted[i + 1] !== sorted[i] + 1) isContiguous = false;
                 }
-
                 const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to a más' };
-
                 if (isContiguous) {
-                    if (max === 6) {
-                        text = `Estudiantes de ${mapBack[min]} a más`;
-                    } else {
-                        text = `Estudiantes del ${mapBack[min]} al ${mapBack[max]} ciclo`;
-                    }
+                    if (max === 6) text = `estudiantes de ${mapBack[min]} a más`;
+                    else text = `estudiantes del ${mapBack[min]} al ${mapBack[max]} ciclo`;
                 } else {
                     const cycleNames = sorted.map(c => mapBack[c]);
-                    if (cycleNames.length === 2) {
-                        text = `Estudiantes del ${cycleNames[0]} y ${cycleNames[1]} ciclo`;
-                    } else {
+                    if (cycleNames.length === 2) text = `estudiantes del ${cycleNames[0]} y ${cycleNames[1]} ciclo`;
+                    else {
                         const last = cycleNames.pop();
-                        text = `Estudiantes del ${cycleNames.join(', ')} y ${last} ciclo`;
+                        text = `estudiantes del ${cycleNames.join(', ')} y ${last} ciclo`;
                     }
                 }
             }
-
             if (hasDocentes) text += ' y Docentes';
             if (hasPublico) text += ' y Público General';
-
         } else if (hasDocentes) {
             text = 'Solo Docentes';
         } else if (hasPublico) {
@@ -214,21 +197,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (values.includes('Egresados')) {
-            if (text !== 'Seleccione audiencia...') text += ', Egresados';
+            if (text !== 'Seleccione audiencia...') text += ' y egresados';
             else text = 'Egresados';
         }
 
-        // Agregar detalle opcional si existe
         const detailInput = document.getElementById('audience-detail-input');
         if (detailInput && detailInput.value.trim() !== '') {
-            if (text !== 'Seleccione audiencia...') {
-                text += ' (' + detailInput.value.trim() + ')';
-            } else {
-                text = detailInput.value.trim();
-            }
+            if (text !== 'Seleccione audiencia...') text += ' (' + detailInput.value.trim() + ')';
+            else text = detailInput.value.trim();
         }
+        return text;
+    }
 
-        summaryText.textContent = text;
+    function updateAudienceSummary() {
+        const checked = Array.from(audienceCheckboxes).filter(cb => cb.checked);
+        const values = checked.map(cb => cb.value);
+        summaryText.textContent = getFriendlyAudienceText(values);
     }
 
     audienceCheckboxes.forEach(cb => {
@@ -506,9 +490,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const nombre = eventNameInput ? eventNameInput.value.trim() : '';
             const ponente = selectPonente ? selectPonente.value : '';
 
-            const audienciaChecks = Array.from(document.querySelectorAll('input[name="audience"]:checked')).map(cb => cb.value).join(', ');
-            const textAud = document.getElementById('audience-detail-input') ? document.getElementById('audience-detail-input').value.trim() : '';
-            let audiencia = (audienciaChecks && textAud) ? `${audienciaChecks} (${textAud})` : (textAud || audienciaChecks);
+            const values = Array.from(document.querySelectorAll('.audience-check:checked')).map(cb => cb.value);
+            const audFriendly = getFriendlyAudienceText(values);
+            const audClean = (audFriendly && audFriendly !== 'Seleccione audiencia...') ? audFriendly : 'público en general';
 
             // Sedes & Modalidad
             const modChecked = document.querySelector('input[name="modality"]:checked');
@@ -522,9 +506,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const ponenteClean = (ponente && ponente !== 'Pendiente' && ponente !== 'new_ponente') ? ponente.replace(' (CERTUS)', '') : 'Docente por Asignar';
-            const audClean = audiencia ? audiencia : 'Público en general';
-            const temaTitle = nombre.toLowerCase().replace(tipo.toLowerCase(), '').trim() || nombre;
+            let ponenteClean = (ponente && ponente !== 'Pendiente' && ponente !== 'new_ponente') ? ponente.replace(' (CERTUS)', '') : 'Docente por Asignar';
+            if (ponenteClean.includes(',')) {
+                const parts = ponenteClean.split(',');
+                ponenteClean = (parts[1].trim() + ' ' + parts[0].trim()).trim();
+            }
+            const temaTitle = nombre.replace(new RegExp(tipo, 'gi'), '').trim() || nombre;
 
             const finalDesc = `${tipo} a cargo del ponente ${ponenteClean}, dirigido a ${audClean}. En este espacio se desarrollará el tema: ${temaTitle}. Modalidad: ${modalidad}. Sede: ${sedeStr}.`;
             eventDescInput.value = finalDesc;
@@ -2186,6 +2173,21 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
+                                <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border: 1.5px solid rgba(239, 68, 68, 0.3); border-radius: 12px; display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
+                                    <div style="display: flex; align-items: center; gap: 0.8rem; color: #ef4444; font-weight: 700;">
+                                        <i class="ph ph-warning-circle" style="font-size: 1.4rem;"></i>
+                                        <span>ADVERTENCIA IMPORTANTE</span>
+                                    </div>
+                                    <p style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0;">
+                                        Antes de generar el borrador, debe verificar que al menos un participante se haya registrado y debe hacer clic en <strong>Ver en Hoja de cálculo</strong> dentro de su formulario, tal como se muestra en la imagen:
+                                    </p>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <button class="btn-primary small" onclick="window.open('${reqData.form_asistencia_url || '#'}', '_blank')" style="background: #3b82f6; border:none; padding: 5px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer;">
+                                            <i class="ph ph-arrow-square-out"></i> Ir al Formulario
+                                        </button>
+                                    </div>
+                                    <img src="imagen_hoja.jpg" alt="Instrucción Hoja de Cálculo" style="width: 100%; height: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #1e293b; padding: 4px;">
+                                </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <button class="btn-secondary" id="btn-cert-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
                                         <i class="ph ph-certificate"></i> Generar Borrador
@@ -2362,6 +2364,21 @@ document.addEventListener('DOMContentLoaded', () => {
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                </div>
+                                <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border: 1.5px solid rgba(239, 68, 68, 0.3); border-radius: 12px; display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
+                                    <div style="display: flex; align-items: center; gap: 0.8rem; color: #ef4444; font-weight: 700;">
+                                        <i class="ph ph-warning-circle" style="font-size: 1.4rem;"></i>
+                                        <span>ADVERTENCIA IMPORTANTE</span>
+                                    </div>
+                                    <p style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0;">
+                                        Antes de generar el borrador, debe verificar que al menos un participante se haya registrado y debe hacer clic en <strong>Ver en Hoja de cálculo</strong> dentro de su formulario, tal como se muestra en la imagen:
+                                    </p>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <button class="btn-primary small" onclick="window.open('${reqObj.form_inscripcion_url || '#'}', '_blank')" style="background: #3b82f6; border:none; padding: 5px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer;">
+                                            <i class="ph ph-arrow-square-out"></i> Ir al Formulario
+                                        </button>
+                                    </div>
+                                    <img src="imagen_hoja.jpg" alt="Instrucción Hoja de Cálculo" style="width: 100%; height: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #1e293b; padding: 4px;">
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <button class="btn-secondary" id="btn-drem-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
@@ -2594,7 +2611,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     { id: 'draft-f5', label: 'Público Objetivo', value: eventData.audiencia || 'Público en General', isArea: false },
                                     { id: 'draft-f6', label: 'Vertical involucrada', value: 'Finanzas', isArea: false },
                                     { id: 'draft-f7', label: 'Tipo de difusión', value: 'Comunicación Interna / Comunicación Digital', isArea: false },
-                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[público objetivo]'} a participar en el evento tipo ${eventData.tipo} "${eventData.nombre}" que se realizará el ${eventHorarioStr} ${modalModeText}, con inscripción previa.Incluye constancia de participación.Ponente: ${eventData.ponente} `, isArea: true },
+                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[público objetivo]'} a participar en el evento ${eventData.tipo} "${eventData.nombre}" que se realizará el ${eventHorarioStr} ${modalModeText}, con inscripción previa, incluye constancia de participación, ponente: ${eventData.ponente} `, isArea: true },
                                     { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: formLinkTexto, isArea: false },
                                     { id: 'draft-f8_2', label: 'Contacto', value: `Pueden escribir a ${userEmail} o enviar un whatsapp al ${userPhone || '[numero telefonico]'} `, isArea: false },
                                     { id: 'draft-f9', label: 'Plazo de entrega del pedido', value: plazoEntregaStr, isArea: false },
@@ -2647,14 +2664,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                             body: JSON.stringify({ action: 'verificar_carpeta_evento', data: { folder_url: folderUrl } })
                                         });
                                         const result = await response.json();
-                                        if (result.status === "ok" && result.form_inscripcion_url) {
-                                            // Update input UI
-                                            const inputEl = document.getElementById('draft-f8_1');
-                                            if (inputEl) inputEl.value = result.form_inscripcion_url;
+                                        if (result.status === "ok") {
+                                            if (result.form_inscripcion_url) {
+                                                const inputEl = document.getElementById('draft-f8_1');
+                                                if (inputEl) inputEl.value = result.form_inscripcion_url;
+                                            }
 
-                                            // Save silently to DB to persist
+                                            // Save silently to DB to persist urls
                                             let currentReqs = window.currentEventRequisitos || {};
-                                            currentReqs.form_inscripcion_url = result.form_inscripcion_url;
+                                            if (result.form_inscripcion_url) currentReqs.form_inscripcion_url = result.form_inscripcion_url;
+                                            if (result.form_asistencia_url) currentReqs.form_asistencia_url = result.form_asistencia_url;
 
                                             await window.supabaseClient.from('eventos').update({ requisitos: currentReqs }).eq('id', eventId);
                                         } else {
@@ -2738,8 +2757,11 @@ document.addEventListener('DOMContentLoaded', () => {
                                         const box = document.getElementById(`verify-drive-box-${r.id}`);
                                         if (box) {
                                             if (result.status === "ok" && result.exists === true) {
-                                                if (result.form_inscripcion_url && !reqData.form_inscripcion_url) {
+                                                if (result.form_inscripcion_url) {
                                                     reqData.form_inscripcion_url = result.form_inscripcion_url;
+                                                }
+                                                if (result.form_asistencia_url) {
+                                                    reqData.form_asistencia_url = result.form_asistencia_url;
                                                 }
                                                 box.innerHTML = `
                                                     <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
@@ -2901,6 +2923,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                         if (result.form_inscripcion_url) {
                                             reqData.form_inscripcion_url = result.form_inscripcion_url;
                                         }
+                                        if (result.form_asistencia_url) {
+                                            reqData.form_asistencia_url = result.form_asistencia_url;
+                                        }
                                         reqData[r.id] = true;
                                         await updateReqsInDB(reqData);
 
@@ -2940,6 +2965,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                             <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                                         </div>
                                     </label>
+                                    ${(r.id === 'compartido_asistencia' && reqData.form_asistencia_url) ?
+                                    `<a href="${reqData.form_asistencia_url}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Asistencia">
+                                            <i class="ph ph-eye"></i> Form
+                                        </a>` : ''
+                                }
+                                    ${(r.id === 'comunicado_delegados' && reqData.form_inscripcion_url) ?
+                                    `<a href="${reqData.form_inscripcion_url}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Inscripción">
+                                            <i class="ph ph-eye"></i> Form
+                                        </a>` : ''
+                                }
                                 </div>
                             `;
                             reqList.appendChild(li);

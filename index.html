@@ -59,10 +59,12 @@
                     <i class="ph ph-chat-circle-text"></i>
                     <span>Comunicación</span>
                 </button>
+                <!-- 
                 <button class="nav-btn" data-target="generacion">
                     <i class="ph ph-file-pdf"></i>
                     <span>Generación</span>
                 </button>
+                -->
                 <!--
                 <button class="nav-btn" data-target="envio">
                     <i class="ph ph-paper-plane-tilt"></i>
@@ -338,6 +340,7 @@
                             </div>
                         </div>
 
+                        <!-- 
                         <div
                             style="background: rgba(0,0,0,0.1); padding: 1.5rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
                             <h4><i class="ph ph-list-dashes"></i> Variables</h4>
@@ -351,129 +354,130 @@
                             <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 5px;">* Nota: Las
                                 variables solo funcionan con un sistema de envío individual, no en CCO manual general.
                             </p>
+                            ...
+                        </div>
+                        -->
 
-                            <div
-                                style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
-                                <h4>Generar Lista de Correos</h4>
-                                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Copia los
-                                    correos de las personas marcadas con check en la tabla.</p>
-                                <textarea id="com-generated-emails" class="input-modern area" readonly
-                                    style="height: 60px; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.5rem;"
-                                    placeholder="correo1, correo2..."></textarea>
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <button class="btn-secondary small" style="flex: 1;"
-                                        onclick="copyToClipboard('com-generated-emails')"><i class="ph ph-copy"></i>
-                                        Copiar Correos</button>
-                                </div>
+                        <div style="margin-top: 2rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem;">
+                            <h4>Generar Lista de Correos</h4>
+                            <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Copia los
+                                correos de las personas marcadas con check en la tabla.</p>
+                            <textarea id="com-generated-emails" class="input-modern area" readonly
+                                style="height: 60px; font-family: monospace; font-size: 0.8rem; margin-bottom: 0.5rem;"
+                                placeholder="correo1, correo2..."></textarea>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn-secondary small" style="flex: 1;"
+                                    onclick="copyToClipboard('com-generated-emails')"><i class="ph ph-copy"></i>
+                                    Copiar Correos</button>
                             </div>
                         </div>
                     </div>
                 </div>
-            </section>
+    </div>
+    </section>
 
-            <!-- Sección: Generación -->
-            <section id="generacion" class="content-section">
-                <div class="section-header">
-                    <h2>Generación de Constancias</h2>
-                    <p>Sube tu base de datos y genera los certificados en PDF.</p>
-                </div>
+    <!-- Sección: Generación -->
+    <section id="generacion" class="content-section">
+        <div class="section-header">
+            <h2>Generación de Constancias</h2>
+            <p>Sube tu base de datos y genera los certificados en PDF.</p>
+        </div>
 
-                <div class="card" style="margin-bottom: 2rem;">
-                    <h3><i class="ph ph-calendar"></i> 1. Seleccione el Evento</h3>
-                    <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
-                        Elija a qué evento desea vincular a los estudiantes.
-                    </p>
-                    <select id="cert-event-selector" class="input-modern" style="max-width: 600px;">
-                        <option value="" disabled selected>Cargando eventos...</option>
-                    </select>
-                </div>
+        <div class="card" style="margin-bottom: 2rem;">
+            <h3><i class="ph ph-calendar"></i> 1. Seleccione el Evento</h3>
+            <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+                Elija a qué evento desea vincular a los estudiantes.
+            </p>
+            <select id="cert-event-selector" class="input-modern" style="max-width: 600px;">
+                <option value="" disabled selected>Cargando eventos...</option>
+            </select>
+        </div>
 
-                <!-- Importación de Datos -->
-                <div class="card" style="margin-bottom: 2rem;">
-                    <h3><i class="ph ph-users-three"></i> 2. Subir Lista de Asistencia (Google Forms .csv)</h3>
-                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
-                        Adjunta el archivo CSV de Asistencia descargado de Google Forms. Asegúrese de haber seleccionado
-                        un evento arriba.
-                    </p>
+        <!-- Importación de Datos -->
+        <div class="card" style="margin-bottom: 2rem;">
+            <h3><i class="ph ph-users-three"></i> 2. Subir Lista de Asistencia (Google Forms .csv)</h3>
+            <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                Adjunta el archivo CSV de Asistencia descargado de Google Forms. Asegúrese de haber seleccionado
+                un evento arriba.
+            </p>
 
-                    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-                        <input type="file" id="csv-file-input" accept=".csv" class="input-modern"
-                            style="max-width: 400px;">
-                        <button id="btn-process-csv" class="btn-primary"><i class="ph ph-play"></i> Analizar
-                            CSV</button>
+            <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+                <input type="file" id="csv-file-input" accept=".csv" class="input-modern" style="max-width: 400px;">
+                <button id="btn-process-csv" class="btn-primary"><i class="ph ph-play"></i> Analizar
+                    CSV</button>
+            </div>
+
+            <!-- Tabla de Previsualización -->
+            <div id="preview-container" class="hidden" style="margin-top: 1.5rem; overflow-x: auto;">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th width="100">Estado</th>
+                            <th>DNI</th>
+                            <th>Participante</th>
+                            <th>Correo Electrónico</th>
+                            <th>Teléfono</th>
+                            <th>Turno</th>
+                            <th>Ciclo</th>
+                            <th>Egresado</th>
+                            <th width="100">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="participants-table-body">
+                        <!-- JS Fill -->
+                    </tbody>
+                </table>
+
+                <div
+                    style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
+                    <span id="import-stats" style="color: var(--text-muted); font-size: 0.9rem;"></span>
+
+                    <!-- Grupo Izquierdo (Legacy Contacts) -->
+                    <div style="display: flex; gap: 0.5rem; align-items: center; display: none;">
+                        <!-- Hidden since its mostly for legacy email workflow -->
+                        <input type="text" id="contact-label" placeholder="Etiqueta (Ej: Webinar)"
+                            class="input-modern small" style="width: 150px;">
+                        <button id="btn-export-contacts" class="btn-primary" disabled>
+                            <i class="ph ph-export"></i> Exportar Contactos Google
+                        </button>
                     </div>
-
-                    <!-- Tabla de Previsualización -->
-                    <div id="preview-container" class="hidden" style="margin-top: 1.5rem; overflow-x: auto;">
-                        <table class="data-table">
-                            <thead>
-                                <tr>
-                                    <th width="100">Estado</th>
-                                    <th>DNI</th>
-                                    <th>Participante</th>
-                                    <th>Correo Electrónico</th>
-                                    <th>Teléfono</th>
-                                    <th>Turno</th>
-                                    <th>Ciclo</th>
-                                    <th>Egresado</th>
-                                    <th width="100">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="participants-table-body">
-                                <!-- JS Fill -->
-                            </tbody>
-                        </table>
-
-                        <div
-                            style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
-                            <span id="import-stats" style="color: var(--text-muted); font-size: 0.9rem;"></span>
-
-                            <!-- Grupo Izquierdo (Legacy Contacts) -->
-                            <div style="display: flex; gap: 0.5rem; align-items: center; display: none;">
-                                <!-- Hidden since its mostly for legacy email workflow -->
-                                <input type="text" id="contact-label" placeholder="Etiqueta (Ej: Webinar)"
-                                    class="input-modern small" style="width: 150px;">
-                                <button id="btn-export-contacts" class="btn-primary" disabled>
-                                    <i class="ph ph-export"></i> Exportar Contactos Google
-                                </button>
-                            </div>
-                            <!-- Grupo Derecho (Data Base Sync) -->
-                            <div style="display: flex; gap: 0.5rem; align-items: center;">
-                                <button id="btn-save-participantsdb" class="btn-primary"
-                                    style="background: #10b981; border-color: #059669;">
-                                    <i class="ph ph-database"></i> Guardar en Base de Datos
-                                </button>
-                            </div>
-                        </div>
+                    <!-- Grupo Derecho (Data Base Sync) -->
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        <button id="btn-save-participantsdb" class="btn-primary"
+                            style="background: #10b981; border-color: #059669;">
+                            <i class="ph ph-database"></i> Guardar en Base de Datos
+                        </button>
                     </div>
                 </div>
+            </div>
+        </div>
 
-                <!-- Database View (Students saved for the selected event) -->
-                <div class="card">
-                    <h3><i class="ph ph-users"></i> 3. Estudiantes Guardados en Base de Datos</h3>
-                    <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
-                        Lista oficial de estudiantes registrados en Supabase para el evento seleccionado.
-                    </p>
+        <!-- Database View (Students saved for the selected event) -->
+        <div class="card">
+            <h3><i class="ph ph-users"></i> 3. Estudiantes Guardados en Base de Datos</h3>
+            <p style="color:var(--text-muted); margin-bottom:1.5rem; font-size:0.9rem;">
+                Lista oficial de estudiantes registrados en Supabase para el evento seleccionado.
+            </p>
 
-                    <table class="data-table">
-                        <thead>
-                            <tr>
-                                <th>DNI</th>
-                                <th>Nombres y Apellidos</th>
-                                <th>Correo</th>
-                                <th>Estado Constancia / Certificado</th>
-                            </tr>
-                        </thead>
-                        <tbody id="db-participants-table-body">
-                            <tr>
-                                <td colspan="4" style="text-align:center; padding: 2rem; color: var(--text-muted);">
-                                    Selecciona un evento arriba para cargar la lista.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </section>
-        </main>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>DNI</th>
+                        <th>Nombres y Apellidos</th>
+                        <th>Correo</th>
+                        <th>Estado Constancia / Certificado</th>
+                    </tr>
+                </thead>
+                <tbody id="db-participants-table-body">
+                    <tr>
+                        <td colspan="4" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                            Selecciona un evento arriba para cargar la lista.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+    </main>
     </div>
 
     <!-- Modal para Crear Evento -->

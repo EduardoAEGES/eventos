@@ -267,9 +267,21 @@ function doPost(e) {
 
                 let eventFolder;
                 let formInscUrl = "";
+                let formAsistUrl = "";
+
                 if (folders.hasNext()) {
                     // Folder already exists, just return it
                     eventFolder = folders.next();
+                    // Intentar recuperar URLs si ya existen
+                    const files = eventFolder.getFilesByType('application/vnd.google-apps.form');
+                    while (files.hasNext()) {
+                        const file = files.next();
+                        if (file.getName().includes("INSCRIPCION")) {
+                            formInscUrl = FormApp.openById(file.getId()).getPublishedUrl();
+                        } else if (file.getName().includes("ASISTENCIA")) {
+                            formAsistUrl = FormApp.openById(file.getId()).getPublishedUrl();
+                        }
+                    }
                 } else {
                     // Create new folder
                     eventFolder = parentFolder.createFolder(ev.folder_name);
@@ -309,6 +321,9 @@ function doPost(e) {
                             .requireTextIsEmail()
                             .setHelpText('Por favor ingrese un correo electrónico válido.')
                             .build();
+
+                        const listCiclos = ['I Ciclo', 'II Ciclo', 'III Ciclo', 'IV Ciclo', 'V Ciclo', 'VI Ciclo', 'Docente', 'Egresado', 'No aplica'];
+                        const listTurnos = ['Mañana', 'Diurno', 'Tarde', 'Noche', 'Egresado', 'No aplica'];
 
                         // ========== FORMULARIO DE INSCRIPCIÓN ==========
                         const formInscripcion = FormApp.create("INSCRIPCION AL TALLER VIRTUAL: " + eventNameTitle);
@@ -353,17 +368,18 @@ function doPost(e) {
 
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Ciclo:')
-                            .setChoiceValues(['I Ciclo', 'II Ciclo', 'III Ciclo', 'IV Ciclo', 'V Ciclo', 'VI Ciclo', 'Docente', 'Egresado', 'No aplica'])
+                            .setChoiceValues(listCiclos)
                             .setRequired(true);
 
                         formInscripcion.addMultipleChoiceItem()
                             .setTitle('Turno:')
-                            .setChoiceValues(['Mañana', 'Diurno', 'Tarde', 'Noche', 'Egresado', 'No aplica'])
+                            .setChoiceValues(listTurnos)
                             .setRequired(true);
 
                         // ========== FORMULARIO DE ASISTENCIA ==========
                         const formAsistencia = FormApp.create("ASISTENCIA AL TALLER: " + eventNameTitle);
                         DriveApp.getFileById(formAsistencia.getId()).moveTo(eventFolder);
+                        formAsistUrl = formAsistencia.getPublishedUrl();
 
                         // Intentar aplicar la imagen al Formulario 2
                         if (bannerBlob) {
@@ -389,7 +405,16 @@ function doPost(e) {
                             .setRequired(true)
                             .setValidation(emailValidation);
 
-                        // Se omiten las preguntas internas de validación del evento en este formulario público.
+                        // Nuevos campos en Asistencia
+                        formAsistencia.addMultipleChoiceItem()
+                            .setTitle('Ciclo:')
+                            .setChoiceValues(listCiclos)
+                            .setRequired(true);
+
+                        formAsistencia.addMultipleChoiceItem()
+                            .setTitle('Turno:')
+                            .setChoiceValues(listTurnos)
+                            .setRequired(true);
 
                         // Feedback corto
                         formAsistencia.addScaleItem()
@@ -412,7 +437,8 @@ function doPost(e) {
                 return ContentService.createTextOutput(JSON.stringify({
                     "status": "ok",
                     "folder_url": eventFolder.getUrl(),
-                    "form_inscripcion_url": formInscUrl
+                    "form_inscripcion_url": formInscUrl,
+                    "form_asistencia_url": formAsistUrl
                 })).setMimeType(ContentService.MimeType.JSON);
 
             } catch (folderErr) {
