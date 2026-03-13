@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inscripción al Evento - Certus</title>
+
+    <!-- Fuentes Google Fonts: Inter y Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <!-- Iconos Phosphor -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        :root {
+            --bg-dark-1: #0f172a;
+            --bg-dark-2: #1e293b;
+            --primary-grad: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            --glass-bg: rgba(30, 41, 59, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            background-color: var(--bg-dark-1);
+            color: var(--text-light);
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px 20px;
+            position: relative;
+            overflow-x: hidden;
+            font-family: 'Inter', sans-serif;
+            overflow-y: auto;
+        }
+
+        /* Blobs de fondo para darle un look dinámico y premium */
+        .bg-blob {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: 0;
+            opacity: 0.5;
+            animation: floatBlob 10s infinite ease-in-out alternate;
+        }
+
+        .blob-1 {
+            width: 400px;
+            height: 400px;
+            background: rgba(59, 130, 246, 0.4);
+            top: -100px;
+            left: -100px;
+        }
+
+        .blob-2 {
+            width: 500px;
+            height: 500px;
+            background: rgba(139, 92, 246, 0.3);
+            bottom: -150px;
+            right: -100px;
+            animation-delay: -5s;
+        }
+
+        @keyframes floatBlob {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            100% {
+                transform: translate(30px, 40px) scale(1.1);
+            }
+        }
+
+        .form-container {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 1000px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            margin: auto;
+            animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+            position: relative;
+            z-index: 10;
+        }
+
+        .form-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 30px;
+            padding-bottom: 25px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .header-text {
+            flex: 1;
+            padding-right: 20px;
+            min-width: 0;
+        }
+
+        .header-text h2 {
+            font-family: 'Outfit', sans-serif;
+            color: #ffffff;
+            margin: 0 0 8px 0;
+            font-size: 2rem;
+            font-weight: 700;
+            line-height: 1.2;
+            background: var(--primary-grad);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            word-break: break-word;
+        }
+
+        .header-text p {
+            color: #94a3b8;
+            margin: 0;
+            font-size: 0.95rem;
+        }
+
+        .form-header img {
+            max-width: 140px;
+            height: auto;
+            border-radius: 12px;
+            background: #ffffff;
+            padding: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            flex-shrink: 0;
+        }
+
+        .event-details {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 35px;
+            display: none;
+            /* Se mostrará con JS */
+        }
+
+        .event-details .badge {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+            border-radius: 10px;
+            padding: 10px 16px;
+            font-size: 0.9rem;
+            color: #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 500;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .event-details .badge i {
+            color: #60a5fa;
+            font-size: 1.2rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px 25px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            margin-bottom: 8px;
+            font-weight: 500;
+            color: #cbd5e1;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-wrapper i {
+            position: absolute;
+            left: 14px;
+            color: #64748b;
+            font-size: 1.1rem;
+            transition: color 0.3s;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 14px 15px 14px 42px;
+            background-color: rgba(15, 23, 42, 0.6);
+            border: 1.5px solid rgba(71, 85, 105, 0.5);
+            border-radius: 12px;
+            color: white;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-group select {
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #3b82f6;
+            background-color: rgba(15, 23, 42, 0.8);
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15);
+        }
+
+        .form-group input:focus+i,
+        .input-wrapper:focus-within i {
+            color: #3b82f6;
+        }
+
+        .form-group input::placeholder {
+            color: #475569;
+        }
+
+        /* Estilizar arrow select */
+        .select-wrapper::after {
+            content: '\25BC';
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #64748b;
+            font-size: 0.7rem;
+            pointer-events: none;
+        }
+
+        .btn-submit {
+            grid-column: 1 / -1;
+            background: var(--primary-grad);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 14px;
+            font-weight: 600;
+            font-size: 1.05rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 25px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-submit:active {
+            transform: translateY(1px);
+        }
+
+        .btn-submit:disabled {
+            background: #334155;
+            color: #94a3b8;
+            box-shadow: none;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px) scale(0.98);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        #error-container {
+            text-align: center;
+            color: #ef4444;
+            display: none;
+            padding: 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            z-index: 10;
+        }
+
+        /* Estrellas de Calificación */
+        .star-rating {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .star-rating input {
+            display: none;
+        }
+
+        .star-rating label {
+            cursor: pointer;
+            color: #475569;
+            font-size: 2.2rem;
+            transition: color 0.2s;
+            margin: 0;
+            padding: 0;
+            line-height: 1;
+        }
+
+        .star-rating label::before {
+            content: '\2605';
+        }
+
+        .star-rating input:checked~label,
+        .star-rating label:hover,
+        .star-rating label:hover~label {
+            color: #fbbf24;
+        }
+
+        /* Responsividad Nativa Flex */
+        @media (max-width: 950px) {
+            .form-header {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+            }
+
+            .header-text {
+                padding-right: 0;
+                margin-bottom: 20px;
+            }
+
+            .header-text h2 {
+                font-size: 1.8rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 16px;
+            }
+
+            .form-container {
+                padding: 30px 25px;
+            }
+
+            .header-text h2 {
+                font-size: 1.6rem;
+            }
+
+            .event-details {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .event-details .badge {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            .bg-blob {
+                display: none;
+                /* Mejor performance en móviles */
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Efectos visuales de fondo premium -->
+    <div class="bg-blob blob-1"></div>
+    <div class="bg-blob blob-2"></div>
+
+    <div id="error-container">
+        <i class="ph ph-warning-circle" style="font-size: 3.5rem; margin-bottom: 15px; color: #ef4444;"></i>
+        <h2 id="error-title" style="margin: 0 0 10px 0; font-family: 'Outfit'; color: #f87171;">Evento no encontrado
+        </h2>
+        <p id="error-message" style="color: #cbd5e1;">El enlace parece ser incorrecto o el evento ya no está disponible
+            o finalizó.</p>
+    </div>
+
+    <div class="form-container" id="main-form-container" style="display: none;">
+        <div class="form-header">
+            <div class="header-text">
+                <h2 id="ui-event-name">Cargando evento...</h2>
+                <h3 style="color: #60a5fa; font-size: 1.1rem; margin-top: 5px; margin-bottom: 5px; font-weight: 600;">
+                    REGISTRO DE INSCRIPCIÓN</h3>
+                <p>Completa el formulario para asegurar tu cupo.</p>
+            </div>
+            <img src="LOGO_CERTUS_SUNAT.png" alt="Certus Logo"
+                onerror="this.src='https://via.placeholder.com/150x50/1e293b/FFFFFF?text=CERTUS'">
+        </div>
+
+        <div class="event-details" id="ui-event-details">
+            <div class="badge">
+                <i class="ph-fill ph-calendar-blank"></i> <span id="ui-event-date">-</span>
+            </div>
+            <div class="badge">
+                <i class="ph-fill ph-clock"></i> <span id="ui-event-time">-</span>
+            </div>
+            <div class="badge" style="background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.3);">
+                <i class="ph-fill ph-map-pin" style="color: #a78bfa;"></i> <span id="ui-event-location">-</span>
+            </div>
+        </div>
+
+        <form id="registration-form" class="form-grid">
+
+            <div class="form-group full-width">
+                <label for="dni">DNI / Carnet de Extranjería <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper">
+                    <i class="ph ph-identification-card"></i>
+                    <input type="text" id="dni" placeholder="Ej: 71234567" required pattern="\d{8,12}"
+                        title="Ingrese un documento válido">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="nombres">Nombres <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper">
+                    <i class="ph ph-user"></i>
+                    <input type="text" id="nombres" placeholder="Sus nombres completos" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="apellidos">Apellidos <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper">
+                    <i class="ph ph-user-list"></i>
+                    <input type="text" id="apellidos" placeholder="Sus apellidos completos" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="correo">Correo Institucional / Personal <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper">
+                    <i class="ph ph-envelope-simple"></i>
+                    <input type="email" id="correo" placeholder="ejemplo@certus.edu.pe o personal" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="telefono">Celular <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper">
+                    <i class="ph ph-phone"></i>
+                    <input type="tel" id="telefono" placeholder="Ej: 987654321" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="ciclo">Su Perfil en Certus <span style="color:#ef4444">*</span></label>
+                <div class="input-wrapper select-wrapper" style="width: 100%;">
+                    <i class="ph ph-student"></i>
+                    <select id="ciclo" required>
+                        <option value="" disabled selected>Seleccione...</option>
+                        <option value="1">1er Ciclo</option>
+                        <option value="2">2do Ciclo</option>
+                        <option value="3">3er Ciclo</option>
+                        <option value="4">4to Ciclo</option>
+                        <option value="5">5to Ciclo</option>
+                        <option value="6+">6to Ciclo o más</option>
+                        <option value="Egresado">Ya soy Egresado</option>
+                        <option value="Docente">Soy Docente</option>
+                        <option value="Público">Público General</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="turno">Turno <span style="color:#94a3b8; font-weight: normal;">(Opcional)</span></label>
+                <div class="input-wrapper select-wrapper" style="width: 100%;">
+                    <i class="ph ph-sun-horizon"></i>
+                    <select id="turno">
+                        <option value="">Seleccione...</option>
+                        <option value="Mañana">Mañana</option>
+                        <option value="Tarde">Tarde</option>
+                        <option value="Noche">Noche</option>
+                    </select>
+                </div>
+            </div>
+
+
+
+
+            <button type="submit" class="btn-submit" id="btn-submit">
+                <span>Completar Inscripción</span>
+                <i class="ph-bold ph-arrow-right"></i>
+            </button>
+        </form>
+    </div>
+
+    <script src="formulario.js"></script>
+</body>
+
+</html>

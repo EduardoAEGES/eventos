@@ -152,53 +152,63 @@ document.addEventListener('DOMContentLoaded', () => {
         const selectedCycles = values.filter(v => allCycles.includes(v));
         const hasDocentes = values.includes('Docentes');
         const hasPublico = values.includes('Publico');
+        const hasEgresados = values.includes('Egresados');
         const allCyclesSelected = allCycles.every(c => values.includes(c));
 
         let text = '';
-        if (hasDocentes && allCyclesSelected) {
-            text = 'Comunidad académica';
-        } else if (allCyclesSelected) {
+
+        // 1. Toda la comunidad académica: Todos los ciclos + Docentes + Egresados
+        if (allCyclesSelected && hasDocentes && hasEgresados) {
+            text = 'Toda la comunidad académica';
+        }
+        // 2. Todos los estudiantes y egresados: Todos los ciclos + Egresados
+        else if (allCyclesSelected && hasEgresados) {
+            text = 'Todos los estudiantes y egresados';
+        }
+        // 3. Todos los estudiantes: Todos los ciclos (sin egresados o sin docentes combinados así)
+        else if (allCyclesSelected) {
             text = 'Todos los estudiantes';
-        } else if (selectedCycles.length > 0) {
+            if (hasDocentes) text += ' y Docentes';
+            if (hasPublico) text += ' y Público General';
+        }
+        // 4. Lógica de Ciclos específicos
+        else if (selectedCycles.length > 0) {
             const cycleMap = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5, '6+': 6 };
             const sorted = selectedCycles.map(c => cycleMap[c]).sort((a, b) => a - b);
+            const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to' };
 
             if (sorted.length === 1) {
-                const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to a más' };
                 text = `estudiantes de ${mapBack[sorted[0]]} ciclo`;
             } else if (sorted.length > 1) {
-                const min = sorted[0];
-                const max = sorted[sorted.length - 1];
                 let isContiguous = true;
                 for (let i = 0; i < sorted.length - 1; i++) {
                     if (sorted[i + 1] !== sorted[i] + 1) isContiguous = false;
                 }
-                const mapBack = { 1: '1er', 2: '2do', 3: '3er', 4: '4to', 5: '5to', 6: '6to a más' };
+
                 if (isContiguous) {
-                    if (max === 6) text = `estudiantes de ${mapBack[min]} a más`;
-                    else text = `estudiantes del ${mapBack[min]} al ${mapBack[max]} ciclo`;
+                    text = `estudiantes del ${mapBack[sorted[0]]} al ${mapBack[sorted[sorted.length - 1]]} ciclo`;
                 } else {
                     const cycleNames = sorted.map(c => mapBack[c]);
-                    if (cycleNames.length === 2) text = `estudiantes del ${cycleNames[0]} y ${cycleNames[1]} ciclo`;
-                    else {
-                        const last = cycleNames.pop();
-                        text = `estudiantes del ${cycleNames.join(', ')} y ${last} ciclo`;
-                    }
+                    const last = cycleNames.pop();
+                    text = `estudiantes del ${cycleNames.join(', ')} y ${last}`;
                 }
             }
+
+            if (hasEgresados) text += ' y egresados';
             if (hasDocentes) text += ' y Docentes';
             if (hasPublico) text += ' y Público General';
+        }
+        // 5. Solo otros grupos
+        else if (hasEgresados && hasDocentes) {
+            text = 'Egresados y Docentes';
+        } else if (hasEgresados) {
+            text = 'Egresados';
         } else if (hasDocentes) {
             text = 'Solo Docentes';
         } else if (hasPublico) {
             text = 'Público en General';
         } else {
             text = 'Seleccione audiencia...';
-        }
-
-        if (values.includes('Egresados')) {
-            if (text !== 'Seleccione audiencia...') text += ' y egresados';
-            else text = 'Egresados';
         }
 
         const detailInput = document.getElementById('audience-detail-input');
@@ -249,6 +259,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const supabase = window.supabaseClient;
 
     let allEventsData = [];
+    let allPonentesData = [];
 
     // Function to load events
     async function loadEvents() {
@@ -298,6 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 .order('apellidos', { ascending: true });
 
             if (error) throw error;
+            allPonentesData = ponentes;
 
             const selectPonente = document.getElementById('event-ponente');
             if (!selectPonente) return;
@@ -340,23 +352,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // Lógica para agregar y Eliminar Ponente
     const selectPonente = document.getElementById('event-ponente');
     const btnDeletePonente = document.getElementById('btn-delete-ponente');
+    const btnEditPonente = document.getElementById('btn-edit-ponente');
     const newPonenteModal = document.getElementById('new-ponente-modal');
     const newPonenteForm = document.getElementById('new-ponente-form');
     let previousPonenteValue = 'Pendiente';
+    let currentEditPonenteId = null;
 
     function toggleDeletePonenteBtn() {
-        if (!selectPonente || !btnDeletePonente) return;
+        if (!selectPonente || !btnDeletePonente || !btnEditPonente) return;
         const val = selectPonente.value;
         if (val === 'Pendiente' || val === 'new_ponente' || !val) {
             btnDeletePonente.style.display = 'none';
+            btnEditPonente.style.display = 'none';
         } else {
             btnDeletePonente.style.display = 'block';
+            btnEditPonente.style.display = 'block';
         }
     }
 
     if (selectPonente) {
         selectPonente.addEventListener('change', (e) => {
             if (e.target.value === 'new_ponente') {
+                currentEditPonenteId = null;
+                document.querySelector('#new-ponente-modal h2').innerHTML = '<i class="ph ph-user-plus"></i> Registrar Nuevo Ponente';
+                document.getElementById('btn-save-ponente').textContent = 'Guardar Ponente';
                 newPonenteModal.classList.add('active');
                 if (newPonenteForm) newPonenteForm.reset();
             } else {
@@ -364,6 +383,27 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             toggleDeletePonenteBtn();
             if (typeof updateAutoDescription === 'function') updateAutoDescription();
+        });
+    }
+
+    if (btnEditPonente) {
+        btnEditPonente.addEventListener('click', () => {
+            const ponenteName = selectPonente.value;
+            const target = allPonentesData.find(p => {
+                const fullName = `${p.apellidos ? p.apellidos + ',' : ''} ${p.nombres}`.trim();
+                return fullName === ponenteName;
+            });
+
+            if (target) {
+                currentEditPonenteId = target.id;
+                document.querySelector('#new-ponente-modal h2').innerHTML = '<i class="ph ph-pencil"></i> Editar Ponente';
+                document.getElementById('btn-save-ponente').textContent = 'Actualizar Ponente';
+                document.getElementById('ponente-nombres').value = target.nombres;
+                document.getElementById('ponente-apellidos').value = target.apellidos;
+                document.getElementById('ponente-tipo').value = target.tipo_docente || 'Externo';
+                document.getElementById('ponente-especialidad').value = target.especialidad || '';
+                newPonenteModal.classList.add('active');
+            }
         });
     }
 
@@ -385,27 +425,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (result.isConfirmed) {
                 try {
-                    const { data: ponentes, error: fetchErr } = await supabase.from('ponentes').select('*');
-                    if (fetchErr) throw fetchErr;
-
-                    let targetId = null;
-                    for (let p of ponentes) {
+                    const target = allPonentesData.find(p => {
                         const fullName = `${p.apellidos ? p.apellidos + ',' : ''} ${p.nombres}`.trim();
-                        if (fullName === ponenteName) {
-                            targetId = p.id;
-                            break;
-                        }
-                    }
+                        return fullName === ponenteName;
+                    });
 
-                    if (targetId) {
-                        const { error: delErr } = await supabase.from('ponentes').delete().eq('id', targetId);
+                    if (target) {
+                        const { error: delErr } = await supabase.from('ponentes').delete().eq('id', target.id);
                         if (delErr) throw delErr;
                         Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Ponente eliminado', showConfirmButton: false, timer: 2000 });
                         selectPonente.value = 'Pendiente';
                         await loadPonentes();
                         if (typeof updateAutoDescription === 'function') updateAutoDescription();
                     } else {
-                        Swal.fire('Error', 'No se encontró el ponente exacto en la base de datos.', 'error');
+                        Swal.fire('Error', 'No se encontró el ponente exacto para eliminar.', 'error');
                     }
                 } catch (err) {
                     console.error("Error eliminando ponente:", err);
@@ -441,17 +474,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const tipo = document.getElementById('ponente-tipo').value;
             const especialidad = document.getElementById('ponente-especialidad').value.trim();
 
+            const payload = { nombres, apellidos, tipo_docente: tipo, especialidad };
+
             try {
-                const { error: insertError } = await supabase
-                    .from('ponentes')
-                    .insert([{ nombres, apellidos, tipo_docente: tipo, especialidad }]);
+                if (currentEditPonenteId) {
+                    const { error: updateError } = await supabase
+                        .from('ponentes')
+                        .update(payload)
+                        .eq('id', currentEditPonenteId);
 
-                if (insertError) throw insertError;
+                    if (updateError) throw updateError;
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Ponente actualizado', showConfirmButton: false, timer: 2000 });
+                } else {
+                    const { error: insertError } = await supabase
+                        .from('ponentes')
+                        .insert([payload]);
 
-                Swal.fire({
-                    toast: true, position: 'top-end', icon: 'success', title: 'Ponente guardado',
-                    showConfirmButton: false, timer: 2000
-                });
+                    if (insertError) throw insertError;
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Ponente guardado', showConfirmButton: false, timer: 2000 });
+                }
 
                 await loadPonentes(); // Recargar opciones
 
@@ -459,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const newNameCombo = `${apellidos ? apellidos + ',' : ''} ${nombres}`.trim();
                 previousPonenteValue = newNameCombo;
 
-                // Intentar seleccionar el recien creado (asegurarse de que existan los valores)
+                // Intentar seleccionar el recien creado o actualizado
                 setTimeout(() => {
                     selectPonente.value = newNameCombo;
                     toggleDeletePonenteBtn();
@@ -467,11 +508,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 100);
 
             } catch (err) {
-                console.error("Error guardando ponente:", err);
-                Swal.fire('Error', 'No se pudo guardar el ponente', 'error');
+                console.error("Error procesando ponente:", err);
+                Swal.fire('Error', 'No se pudo procesar el ponente', 'error');
             } finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
+                currentEditPonenteId = null;
             }
         });
     }
@@ -676,6 +718,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="event-actions">
                     ${actionHtml}
+                    <button class="btn-icon small" title="Copiar Enlace de Inscripción" onclick="copyFormLink('${event.id}')"><i class="ph ph-link"></i></button>
+                    <button class="btn-icon small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" title="Copiar Enlace de Asistencia" onclick="copyAsistenciaLink('${event.id}')"><i class="ph ph-clipboard-text"></i></button>
                     <button class="btn-icon small" title="Editar Evento" onclick="editEvent('${encodeURIComponent(JSON.stringify(event))}')"><i class="ph ph-pencil-simple"></i></button>
                     <button class="btn-icon small" title="Eliminar Evento" onclick="deleteEvent('${event.id}')"><i class="ph ph-trash"></i></button>
                 </div>
@@ -1046,6 +1090,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>`;
         }
 
+        htmlContent += `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+            <button class="btn-secondary small" style="color:#3b82f6; border-color: rgba(59, 130, 246, 0.4);" onclick="copyFormLink('${eventData.id}')"><i class="ph ph-link"></i> Inscripción</button>
+            <button class="btn-secondary small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" onclick="copyAsistenciaLink('${eventData.id}')"><i class="ph ph-clipboard-text"></i> Asistencia</button>
+        </div>`;
         htmlContent += `</div>`;
 
         Swal.fire({
@@ -1587,7 +1635,6 @@ document.addEventListener('DOMContentLoaded', () => {
             id: 1,
             label: 'Planificado',
             req: [
-                { id: 'carpeta_evento', label: '¿Desea crear la carpeta del evento?', type: 'action_drive' },
                 { id: 'coordinado_ponente', label: '¿Ha coordinado con el ponente?' },
                 { id: 'aceptado_ponente', label: '¿Ha aceptado el ponente?' }
             ]
@@ -1628,7 +1675,7 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Preparado',
             req: [
                 { id: 'elaborado_material', label: '¿El ponente ha terminado de elaborar su material del evento?' },
-                { id: 'cargar_material', label: 'Subir material del evento (Un día antes)', type: 'action_upload_file' },
+                { id: 'cargar_material', label: '¿Te ha compartido el ponente su material del evento?' },
                 { id: 'compartido_recordatorio', label: '¿Haz compartido a los participantes del evento el recordatorio y/o link de reunión?' },
                 { id: 'borrador_recordatorio', label: 'Generar Borrador de Recordatorio', type: 'action_draft_reminder' }
             ]
@@ -1667,7 +1714,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Status Badges (Calcular antes para usar nextStep)
         const currentStep = parseInt(eventData.status) || 0;
-        const nextStep = currentStep + 1;
+        let nextStep = currentStep + 1;
+
+        // Skip Stage 4 (Difundido) and 5 (Preparado) for internal events
+        const isInterno = eventData.is_public === false;
+        if (isInterno && currentStep === 3) {
+            nextStep = 6;
+        }
 
         // Populate Info
         let ponenteHtml = '';
@@ -1683,7 +1736,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             ponenteHtml = `<p style="color:var(--text-muted); margin-top: 0.5rem;"><i class="ph ph-user"></i> Ponente: <strong style="color: #f8fafc;">${eventData.ponente}</strong></p>`;
         }
-        infoDiv.innerHTML = `<h3>${eventData.nombre}</h3><p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>${ponenteHtml}`;
+        infoDiv.innerHTML = `<h3>${eventData.nombre}</h3>
+        <p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>
+        <div style="margin-top: 10px; display: flex; gap: 10px;">
+            <button class="btn-secondary small" style="color:#3b82f6; border-color: rgba(59, 130, 246, 0.4);" onclick="copyFormLink('${eventData.id}')"><i class="ph ph-link"></i> Inscripción</button>
+            <button class="btn-secondary small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" onclick="copyAsistenciaLink('${eventData.id}')"><i class="ph ph-clipboard-text"></i> Asistencia</button>
+        </div>
+        ${ponenteHtml}`;
 
         // Initialize Select2 array logic
         if ((!eventData.ponente || eventData.ponente.toLowerCase() === 'pendiente') && nextStep >= 2) {
@@ -1732,15 +1791,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
             (async () => {
                 try {
-                    const { data: participants, error } = await window.supabaseClient
+                    // Fetch inscritos
+                    const { data: inscritos, error: errI } = await window.supabaseClient
                         .from('participantes')
-                        .select('dni, asistencia')
+                        .select('dni, nombres, correo, telefono')
                         .eq('evento_id', eventData.id);
 
-                    if (error) throw error;
+                    if (errI) throw errI;
 
-                    const totalInscritos = participants.length;
-                    const totalAsistentes = participants.filter(p => p.asistencia === true).length;
+                    // Fetch asistentes
+                    const { data: asistentes, error: errA } = await window.supabaseClient
+                        .from('asistencias')
+                        .select('dni, nombres, apellidos, correo, telefono, calificacion, comentario, created_at')
+                        .eq('evento_id', eventData.id);
+
+                    if (errA) throw errA;
+
+                    const totalInscritos = inscritos.length;
+                    const totalAsistentes = asistentes.length;
                     const porcentajeAsistencia = totalInscritos > 0 ? Math.round((totalAsistentes / totalInscritos) * 100) : 0;
 
                     reqList.innerHTML = `
@@ -1758,15 +1826,28 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div style="font-size: 2rem; font-weight: 800; color: #8b5cf6;">${porcentajeAsistencia}%</div>
                             </div>
                         </div>
+                        <div style="margin: 1.5rem 0; text-align: center;">
+                            <button id="btn-download-report-bundle" class="btn-primary" style="width: 100%; padding: 1rem; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 0.75rem; font-size: 1rem;">
+                                <i class="ph ph-package" style="font-size: 1.5rem;"></i>
+                                Descargar Reporte Final (ZIP)
+                            </button>
+                        </div>
                         <li style="padding: 1rem; color: #94a3b8; text-align: center; border: none; font-size: 0.9rem; line-height: 1.6;">
                             ¡Evento finalizado con éxito! Todos los pasos han sido completados y la data ha sido sincronizada.
                         </li>
                     `;
+
+                    // Asignar evento al botón de descarga
+                    document.getElementById('btn-download-report-bundle').onclick = () => {
+                        window.downloadFinalEventReport(eventData, inscritos, asistentes);
+                    };
+
                 } catch (e) {
                     console.error("Error al cargar reporte:", e);
                     reqList.innerHTML = `<li style="padding: 1rem; color: #ef4444; text-align: center;">Error al cargar la data de participantes.</li>`;
                 }
             })();
+
         }
 
         if (nextStep <= 7) {
@@ -1789,17 +1870,35 @@ document.addEventListener('DOMContentLoaded', () => {
                     const evaluateAdvanceButton = () => {
                         let ok = true;
                         configForCurrent.req.forEach(r => {
+                            // Reglas de opcionalidad
+                            const isPresencial = eventData.modalidad === 'Presencial';
+                            const isInterno = eventData.is_public === false;
+
                             if (r.type === 'action_input_link' || r.type === 'action_upload_image' || r.type === 'action_upload_file') {
-                                if (r.id === 'prog_zoom_meet' && eventData.modalidad === 'Presencial') {
-                                    // Optional for presencial
+                                if (r.id === 'prog_zoom_meet' && isPresencial) {
+                                    // Opcional para presencial
+                                } else if (r.id === 'cargar_foto' && isInterno) {
+                                    // Opcional para interno
                                 } else if (typeof reqData[r.id] !== 'string' || reqData[r.id].trim() === '') {
                                     ok = false;
                                 }
                             } else if (r.type !== 'action_drive' && r.type !== 'action_draft' && r.type !== 'action_link' && r.type !== 'action_download_image' && r.type !== 'action_draft_invite' && r.type !== 'action_draft_reminder') {
                                 // Default checkbox logic
-                                if (reqData[r.id] !== true) ok = false;
+                                if (isInterno && (currentStep === 2 || currentStep === 4 || currentStep === 5)) {
+                                    // Fase 2, 4 y 5 son opcionales para internos
+                                } else if (isInterno && (r.id === 'solicitado_foto' || r.id === 'compartido_asistencia' || r.id === 'borrador_constancias' || r.id === 'enviado_constancias')) {
+                                    // Foto, Asistencia, Borrador y Envío de Constancias son opcionales para internos
+                                } else if (reqData[r.id] !== true) {
+                                    ok = false;
+                                }
                             } else if (r.type === 'action_drive') {
                                 if (!reqData.folder_url && reqData[r.id] !== true) ok = false;
+                            } else if (r.type === 'action_draft' || r.type === 'action_link') {
+                                if (isInterno && currentStep === 2) {
+                                    // Botones de fase 2 opcionales para internos
+                                } else if (reqData[r.id] !== true) {
+                                    // Algunos botones pueden ser obligatorios si no son omitidos por reglas anteriores
+                                }
                             }
                         });
 
@@ -1820,6 +1919,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
 
                     configForCurrent.req.forEach(r => {
+                        // User request: omit certificates draft and sent confirmation for internal events
+                        if (isInterno && (r.id === 'borrador_constancias' || r.id === 'enviado_constancias')) return;
+
                         const li = document.createElement('li');
                         li.style.display = 'flex';
                         li.style.justifyContent = 'space-between';
@@ -1834,7 +1936,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
-                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">
+                                        ${r.label}
+                                        ${(r.id === 'prog_zoom_meet' && eventData.modalidad === 'Presencial') ? '<span style="color:#64748b; font-size: 0.8rem; font-weight: normal;">(Opcional)</span>' : ''}
+                                    </label>
                                     <div style="margin-top: 5px; display: flex; gap: 8px;">
                                         <input type="text" id="input-link-${r.id}" placeholder="${r.placeholder}" value="${linkIsSaved ? savedValue : ''}" style="flex: 1; padding: 0.4rem; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: white; font-size: 0.85rem; outline: none;">
                                         <button class="btn-secondary" id="btn-save-link-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.4rem;">
@@ -1867,7 +1972,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
 
                             // Evaluate completion: string length > 0
-                            if (!linkIsSaved) isStepCompletable = false;
+                            if (!linkIsSaved && !(r.id === 'prog_zoom_meet' && eventData.modalidad === 'Presencial')) isStepCompletable = false;
 
                             return;
                         }
@@ -1878,11 +1983,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
-                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">
+                                        ${r.label}
+                                        ${(r.id === 'cargar_foto' && eventData.is_public === false) ? '<span style="color:#64748b; font-size: 0.8rem; font-weight: normal;">(Opcional)</span>' : ''}
+                                    </label>
                                 </div>
-                                <div style="display: flex; gap: 10px; align-items: center; user-select: none;">
+                                <div style="display: flex; gap: 8px; align-items: center; user-select: none;">
                                     ${isUploaded ?
-                                    `<span style="background: rgba(34, 197, 94, 0.2); color: #22c55e; padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 10px;">IMAGEN SUBIDA</span>`
+                                    `<button class="btn-secondary" id="btn-view-${r.id}" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.3rem;" title="Ver Foto">
+                                        <i class="ph ph-eye"></i> Ver
+                                     </button>
+                                     <input type="file" id="file-edit-${r.id}" accept="image/*" style="display: none;">
+                                     <button class="btn-primary" id="btn-trigger-edit-${r.id}" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.3rem;" title="Reemplazar Foto">
+                                        <i class="ph ph-pencil-simple"></i>
+                                     </button>
+                                     <button class="btn-secondary" id="btn-save-edit-${r.id}" style="display:none; padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 6px; align-items:center; gap: 0.3rem;">
+                                        <i class="ph ph-cloud-arrow-up"></i>
+                                     </button>
+                                     <button class="btn-secondary" id="btn-del-${r.id}" style="padding: 0.4rem 0.6rem; font-size: 0.8rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.3rem; border-color: rgba(239, 68, 68, 0.4); color: #ef4444;" title="Eliminar Foto">
+                                        <i class="ph ph-trash"></i>
+                                     </button>`
                                     :
                                     `<input type="file" id="file-upload-${r.id}" accept="image/*" style="display: none;">
                                          <button class="btn-primary" onclick="document.getElementById('file-upload-${r.id}').click()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
@@ -1896,6 +2016,57 @@ document.addEventListener('DOMContentLoaded', () => {
                             `;
                             reqList.appendChild(li);
 
+                            const handleImageUpload = async (file, btnUpload, btnSelectOrTrigger) => {
+                                if (!file) return;
+                                btnUpload.innerHTML = '<i class="ph ph-spinner ph-spin"></i>';
+                                btnUpload.disabled = true;
+                                if (btnSelectOrTrigger) btnSelectOrTrigger.style.display = 'none';
+
+                                try {
+                                    const reader = new FileReader();
+                                    reader.onload = async function (e) {
+                                        const img = new Image();
+                                        img.onload = async function () {
+                                            const canvas = document.createElement('canvas');
+                                            let width = img.width;
+                                            let height = img.height;
+                                            const MAX_DIM = 800;
+
+                                            if (width > MAX_DIM || height > MAX_DIM) {
+                                                if (width > height) {
+                                                    height = Math.round((height * MAX_DIM) / width);
+                                                    width = MAX_DIM;
+                                                } else {
+                                                    width = Math.round((width * MAX_DIM) / height);
+                                                    height = MAX_DIM;
+                                                }
+                                            }
+
+                                            canvas.width = width;
+                                            canvas.height = height;
+                                            const ctx = canvas.getContext('2d');
+                                            ctx.drawImage(img, 0, 0, width, height);
+                                            const base64Str = canvas.toDataURL('image/jpeg', 0.85);
+
+                                            reqData[r.id] = base64Str;
+                                            await updateReqsInDB(reqData);
+                                            window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                        };
+                                        img.onerror = function () {
+                                            throw new Error("El archivo no es una imagen válida o está dañado.");
+                                        };
+                                        img.src = e.target.result;
+                                    };
+                                    reader.readAsDataURL(file);
+                                } catch (err) {
+                                    console.error("Error procesando imagen:", err);
+                                    Swal.fire('Error', 'Hubo un error procesando la imagen. Intenta con un archivo diferente.', 'error');
+                                    btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i>';
+                                    btnUpload.disabled = false;
+                                    if (btnSelectOrTrigger) btnSelectOrTrigger.style.display = 'inline-flex';
+                                }
+                            };
+
                             if (!isUploaded) {
                                 const fileInput = document.getElementById(`file-upload-${r.id}`);
                                 const btnSelect = li.querySelector('.btn-primary');
@@ -1904,68 +2075,67 @@ document.addEventListener('DOMContentLoaded', () => {
                                 fileInput.addEventListener('change', () => {
                                     if (fileInput.files.length > 0) {
                                         const file = fileInput.files[0];
-                                        btnSelect.innerHTML = `<i class="ph ph-image"></i> ${file.name.substring(0, 15)}...`;
+                                        btnSelect.innerHTML = `<i class="ph ph-image"></i> ${file.name.substring(0, 10)}...`;
                                         btnSelect.style.background = '#475569';
                                         btnUpload.style.display = 'inline-flex';
                                     }
                                 });
 
-                                btnUpload.addEventListener('click', async () => {
-                                    const file = fileInput.files[0];
-                                    if (!file) return;
+                                btnUpload.addEventListener('click', () => handleImageUpload(fileInput.files[0], btnUpload, btnSelect));
+                                isStepCompletable = false;
+                            } else {
+                                // Handlers for View, Edit, Delete
+                                const btnView = document.getElementById(`btn-view-${r.id}`);
+                                const fileEdit = document.getElementById(`file-edit-${r.id}`);
+                                const btnTriggerEdit = document.getElementById(`btn-trigger-edit-${r.id}`);
+                                const btnSaveEdit = document.getElementById(`btn-save-edit-${r.id}`);
+                                const btnDel = document.getElementById(`btn-del-${r.id}`);
 
-                                    btnUpload.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Subiendo...';
-                                    btnUpload.disabled = true;
-                                    btnSelect.style.display = 'none';
-
-                                    try {
-                                        const storedFolderUrl = (window.currentEventRequisitos && window.currentEventRequisitos.folder_url) || '';
-                                        if (!storedFolderUrl) {
-                                            Swal.fire({ title: 'Uy!', text: 'Falta la carpeta del evento. Retrocede a "Planificado" para crearla.', icon: 'warning', target: document.getElementById('status-modal') });
-                                            btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
-                                            btnUpload.disabled = false;
-                                            btnSelect.style.display = 'inline-flex';
-                                            return;
-                                        }
-
-                                        const reader = new FileReader();
-                                        reader.onload = async function () {
-                                            const base64Data = reader.result.split(',')[1];
-                                            const response = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
-                                                method: 'POST', mode: 'cors',
-                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                                body: JSON.stringify({
-                                                    action: 'subir_foto_ponente',
-                                                    data: {
-                                                        folder_url: storedFolderUrl,
-                                                        file_name: file.name,
-                                                        mime_type: file.type,
-                                                        file_content: base64Data
-                                                    }
-                                                })
-                                            });
-                                            const result = await response.json();
-                                            if (result.status === "ok") {
-                                                reqData[r.id] = result.file_url || true;
-                                                await updateReqsInDB(reqData);
-                                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
-                                            } else {
-                                                throw new Error("GAS Script response failed: " + result.message);
-                                            }
-                                        };
-                                        reader.readAsDataURL(file);
-
-                                    } catch (err) {
-                                        console.error(err);
-                                        Swal.fire('Error', 'Hubo un error subiendo la foto a Drive.', 'error');
-                                        btnUpload.innerHTML = '<i class="ph ph-cloud-arrow-up"></i> Guardar';
-                                        btnUpload.disabled = false;
-                                        btnSelect.style.display = 'inline-flex';
+                                btnView.addEventListener('click', () => {
+                                    const base64 = reqData[r.id];
+                                    if (base64 && base64.startsWith('data:image')) {
+                                        Swal.fire({
+                                            imageUrl: base64,
+                                            imageAlt: 'Foto del ponente',
+                                            showConfirmButton: true,
+                                            confirmButtonColor: '#3b82f6',
+                                            confirmButtonText: 'Cerrar',
+                                            width: 'auto',
+                                            padding: '1em',
+                                            background: '#1e293b'
+                                        });
+                                    } else {
+                                        window.open(base64, '_blank');
                                     }
                                 });
 
-                                // Evaluate completion: string length > 0 or true
-                                if (!isUploaded) isStepCompletable = false;
+                                btnTriggerEdit.addEventListener('click', () => fileEdit.click());
+                                fileEdit.addEventListener('change', () => {
+                                    if (fileEdit.files.length > 0) {
+                                        btnTriggerEdit.style.background = '#475569';
+                                        btnSaveEdit.style.display = 'inline-flex';
+                                    }
+                                });
+
+                                btnSaveEdit.addEventListener('click', () => handleImageUpload(fileEdit.files[0], btnSaveEdit, btnTriggerEdit));
+
+                                btnDel.addEventListener('click', async () => {
+                                    const result = await Swal.fire({
+                                        title: '¿Confirmar eliminación?',
+                                        text: "La foto del ponente será eliminada.",
+                                        icon: 'warning',
+                                        showCancelButton: true,
+                                        confirmButtonColor: '#ef4444',
+                                        cancelButtonColor: '#475569',
+                                        confirmButtonText: 'Sí, eliminar',
+                                        cancelButtonText: 'Cancelar'
+                                    });
+                                    if (result.isConfirmed) {
+                                        reqData[r.id] = false;
+                                        await updateReqsInDB(reqData);
+                                        window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                    }
+                                });
                             }
 
                             return;
@@ -1974,7 +2144,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         // --- SPECIAL LOGIC FOR ACTION_DOWNLOAD_IMAGE ---
                         else if (r.type === 'action_download_image') {
                             const fotoUrl = window.currentEventRequisitos && window.currentEventRequisitos['cargar_foto'];
-                            const isDisabled = typeof fotoUrl !== 'string' || !fotoUrl.startsWith('http');
+                            const isDisabled = typeof fotoUrl !== 'string' || (!fotoUrl.startsWith('http') && !fotoUrl.startsWith('data:image'));
 
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
@@ -1990,7 +2160,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             if (!isDisabled) {
                                 li.querySelector(`#btn-dw-${r.id}`).addEventListener('click', () => {
-                                    window.open(fotoUrl, '_blank');
+                                    if (fotoUrl.startsWith('data:image')) {
+                                        const a = document.createElement('a');
+                                        a.href = fotoUrl;
+                                        a.download = 'foto_ponente.jpg';
+                                        a.click();
+                                    } else {
+                                        window.open(fotoUrl, '_blank');
+                                    }
                                     reqData[r.id] = true;
                                     updateReqsInDB(reqData);
                                     window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
@@ -2173,21 +2350,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
-                                <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border: 1.5px solid rgba(239, 68, 68, 0.3); border-radius: 12px; display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
-                                    <div style="display: flex; align-items: center; gap: 0.8rem; color: #ef4444; font-weight: 700;">
-                                        <i class="ph ph-warning-circle" style="font-size: 1.4rem;"></i>
-                                        <span>ADVERTENCIA IMPORTANTE</span>
-                                    </div>
-                                    <p style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0;">
-                                        Antes de generar el borrador, debe verificar que al menos un participante se haya registrado y debe hacer clic en <strong>Ver en Hoja de cálculo</strong> dentro de su formulario, tal como se muestra en la imagen:
-                                    </p>
-                                    <div style="display: flex; gap: 10px; align-items: center;">
-                                        <button class="btn-primary small" onclick="window.open('${reqData.form_asistencia_url || '#'}', '_blank')" style="background: #3b82f6; border:none; padding: 5px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer;">
-                                            <i class="ph ph-arrow-square-out"></i> Ir al Formulario
-                                        </button>
-                                    </div>
-                                    <img src="imagen_hoja.jpg" alt="Instrucción Hoja de Cálculo" style="width: 100%; height: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #1e293b; padding: 4px;">
-                                </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <button class="btn-secondary" id="btn-cert-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
                                         <i class="ph ph-certificate"></i> Generar Borrador
@@ -2200,142 +2362,22 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const btn = e.currentTarget;
                                 const originalHtml = btn.innerHTML;
                                 btn.disabled = true;
-                                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Sincronizando...`;
+                                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Cargando...`;
 
                                 try {
                                     const reqObj = window.currentEventRequisitos || {};
-                                    // Para constancias, necesitamos el enlace de asistencia (usualmente guardado en reqData.asistencia_form_url o similar si el usuario lo puso)
-                                    // Pero el usuario dijo "como cuando presionabas generar borrador en fase 5", así que buscaremos el sheet de respuestas.
 
-                                    // 1. Obtener respuestas del formulario de ASISTENCIA (no de inscripción)
-                                    if (!reqData.responses_sheet_asistencia_url) {
-                                        console.log("Iniciando búsqueda automática de asistencia en folder:", reqObj.folder_url);
-                                        // Intentar búsqueda AUTOMÁTICA primero si hay folder_url
-                                        let foundUrl = "";
-                                        if (reqObj.folder_url) {
-                                            try {
-                                                const gasSearch = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
-                                                    method: 'POST', mode: 'cors',
-                                                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                                    body: JSON.stringify({
-                                                        action: 'vincular_y_obtener_respuestas',
-                                                        data: {
-                                                            folder_url: reqObj.folder_url,
-                                                            form_type: 'ASISTENCIA'
-                                                        }
-                                                    })
-                                                });
-                                                const searchResult = await gasSearch.json();
-                                                console.log("GAS Search Result:", searchResult);
-
-                                                if (searchResult.status === "ok" && searchResult.spreadsheet_url) {
-                                                    reqData.responses_sheet_asistencia_url = searchResult.spreadsheet_url;
-                                                    reqData.asistencia_responses = searchResult.responses || [];
-                                                    await updateReqsInDB(reqData);
-                                                    foundUrl = searchResult.spreadsheet_url;
-                                                    console.log("Búsqueda automática exitosa:", foundUrl);
-                                                }
-                                            } catch (searchErr) {
-                                                console.warn("Error en búsqueda automática:", searchErr);
-                                            }
-                                        }
-
-                                        // Si falló la búsqueda automática (o no hay folder_url), pedir manual (Backup)
-                                        if (!foundUrl) {
-                                            console.log("Búsqueda automática falló, solicitando URL manual");
-                                            const { value: url } = await Swal.fire({
-                                                title: 'Enlace de Asistencia',
-                                                text: 'No pudimos encontrar el formulario de asistencia automáticamente. Por favor, realiza lo siguiente:\n1. Abre el formulario de asistencia en Google Forms.\n2. Ve a la pestaña "Respuestas" y haz clic en "Vincular con Hojas de cálculo".\n3. Pega aquí el enlace de esa hoja generada.',
-                                                input: 'url',
-                                                inputPlaceholder: 'https://docs.google.com/spreadsheets/d/...',
-                                                showCancelButton: true
-                                            });
-
-                                            if (!url) throw new Error("Se requiere el enlace de asistencia para continuar.");
-
-                                            const gasResponse = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
-                                                method: 'POST', mode: 'cors',
-                                                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                                body: JSON.stringify({
-                                                    action: 'vincular_y_obtener_respuestas',
-                                                    data: { form_url: url }
-                                                })
-                                            });
-                                            const result = await gasResponse.json();
-                                            if (result.status === "ok") {
-                                                reqData.responses_sheet_asistencia_url = result.spreadsheet_url;
-                                                reqData.asistencia_responses = result.responses || [];
-                                                await updateReqsInDB(reqData);
-                                            } else throw new Error(result.message || "Error en GAS");
-                                        }
-                                    }
-
-                                    // 2. Sincronización Inteligente
-                                    const { data: dbParticipants } = await window.supabaseClient
+                                    const { data: dbParticipants, error } = await window.supabaseClient
                                         .from('participantes')
-                                        .select('*')
+                                        .select('id, asistencia')
                                         .eq('evento_id', eventData.id);
 
-                                    const asistenciaRows = reqData.asistencia_responses || [];
-                                    const toUpsert = [];
+                                    if (error) throw error;
 
-                                    const findVal = (row, possibleKeys) => {
-                                        const key = Object.keys(row).find(k =>
-                                            possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
-                                        );
-                                        return key ? row[key] : null;
-                                    };
+                                    const asistentes = dbParticipants ? dbParticipants.filter(p => p.asistencia === true) : [];
 
-                                    asistenciaRows.forEach(row => {
-                                        const dni = (row['DNI:'] || row['DNI'] || findVal(row, ['DNI']) || '').toString().trim();
-                                        const correo = (row['Correo electrónico'] || row['Correo'] || findVal(row, ['Correo']) || '').toString().trim().toLowerCase();
-                                        const apellidosNuevos = (row['Apellidos:'] || row['Apellidos'] || findVal(row, ['Apellido']) || '').toString().trim();
-                                        const nombresNuevos = (row['Nombres:'] || row['Nombres'] || findVal(row, ['Nombre']) || '').toString().trim();
-                                        let nombreCompleto = "";
-
-                                        if (apellidosNuevos || nombresNuevos) {
-                                            nombreCompleto = (apellidosNuevos + " " + nombresNuevos).trim();
-                                        } else {
-                                            nombreCompleto = (row['Apellidos y Nombres completos:'] || row['Apellidos y Nombres completos'] || row['Nombres y Apellidos'] || '').toString().trim();
-                                        }
-
-                                        if (!dni && !correo && !nombreCompleto) return;
-
-                                        // Buscar en DB si ya existe
-                                        let existing = dbParticipants.find(p => {
-                                            const matchDni = dni && p.dni && p.dni.toString().trim() === dni;
-                                            const matchCorreo = correo && p.correo && p.correo.toLowerCase().trim() === correo;
-
-                                            const pFull = (p.nombres + ' ' + (p.apellidos || '')).toLowerCase().trim();
-                                            const rowFull = nombreCompleto.toLowerCase().trim();
-                                            const matchNombre = nombreCompleto && (pFull.includes(rowFull) || rowFull.includes(pFull));
-
-                                            return matchDni || matchCorreo || matchNombre;
-                                        });
-
-                                        if (existing) {
-                                            toUpsert.push({
-                                                ...existing,
-                                                asistencia: true,
-                                                certificado_autorizado: true
-                                            });
-                                        } else {
-                                            // Si no existe, crear nuevo
-                                            toUpsert.push({
-                                                evento_id: eventData.id,
-                                                dni: dni || 'N/A',
-                                                nombres: nombreCompleto,
-                                                correo: correo,
-                                                asistencia: true,
-                                                certificado_autorizado: true
-                                            });
-                                        }
-                                    });
-
-                                    if (toUpsert.length > 0) {
-                                        await window.supabaseClient
-                                            .from('participantes')
-                                            .upsert(toUpsert, { onConflict: 'dni, evento_id' });
+                                    if (asistentes.length === 0) {
+                                        Swal.fire('Sin Asistentes', 'No hay ningún participante marcado con asistencia en este evento. No se generarán constancias para enviar.', 'warning');
                                     }
 
                                     // 3. Abrir Modal de Borrador de Constancias
@@ -2365,21 +2407,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
-                                <div style="margin-top: 1rem; margin-bottom: 1rem; padding: 1rem; background: rgba(239, 68, 68, 0.1); border: 1.5px solid rgba(239, 68, 68, 0.3); border-radius: 12px; display: flex; flex-direction: column; gap: 0.8rem; width: 100%;">
-                                    <div style="display: flex; align-items: center; gap: 0.8rem; color: #ef4444; font-weight: 700;">
-                                        <i class="ph ph-warning-circle" style="font-size: 1.4rem;"></i>
-                                        <span>ADVERTENCIA IMPORTANTE</span>
-                                    </div>
-                                    <p style="font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; margin: 0;">
-                                        Antes de generar el borrador, debe verificar que al menos un participante se haya registrado y debe hacer clic en <strong>Ver en Hoja de cálculo</strong> dentro de su formulario, tal como se muestra en la imagen:
-                                    </p>
-                                    <div style="display: flex; gap: 10px; align-items: center;">
-                                        <button class="btn-primary small" onclick="window.open('${reqObj.form_inscripcion_url || '#'}', '_blank')" style="background: #3b82f6; border:none; padding: 5px 12px; font-size: 0.8rem; border-radius: 6px; cursor: pointer;">
-                                            <i class="ph ph-arrow-square-out"></i> Ir al Formulario
-                                        </button>
-                                    </div>
-                                    <img src="imagen_hoja.jpg" alt="Instrucción Hoja de Cálculo" style="width: 100%; height: auto; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: #1e293b; padding: 4px;">
-                                </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <button class="btn-secondary" id="btn-drem-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
                                         <i class="ph ph-envelope-simple"></i> Generar Borrador
@@ -2392,67 +2419,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const btn = e.currentTarget;
                                 const originalHtml = btn.innerHTML;
                                 btn.disabled = true;
-                                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Sincronizando...`;
+                                btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Cargando...`;
 
                                 try {
-                                    const reqObj = window.currentEventRequisitos || {};
-                                    if (!reqObj.form_inscripcion_url) {
-                                        Swal.fire('Atención', 'No se ha encontrado la URL del formulario de inscripción. Asegúrate de que la carpeta y el formulario se hayan creado correctamente en la etapa 2.', 'warning');
-                                        return;
-                                    }
+                                    // Comprobar si hay inscritos en Supabase
+                                    const { data: partData, error } = await window.supabaseClient.from('participantes').select('id').eq('evento_id', eventData.id);
+                                    if (error) throw error;
 
-                                    // --- LÓGICA DE SINCRONIZACIÓN INTELIGENTE ---
-                                    if (!reqData.responses_sheet_url) {
-                                        // 1. Llamar a GAS para vincular Sheets y obtener respuestas
-                                        const gasResponse = await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
-                                            method: 'POST', mode: 'cors',
-                                            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                                            body: JSON.stringify({
-                                                action: 'vincular_y_obtener_respuestas',
-                                                data: {
-                                                    form_url: reqObj.form_inscripcion_url,
-                                                    folder_url: reqObj.folder_url
-                                                }
-                                            })
-                                        });
-                                        const result = await gasResponse.json();
-
-                                        if (result.status === "ok") {
-                                            // 2. Guardar URL de Sheets en Requisitos
-                                            reqData.responses_sheet_url = result.spreadsheet_url;
-                                            await updateReqsInDB(reqData);
-
-                                            // 3. Sincronizar Participantes a Supabase (Upsert)
-                                            if (result.responses && result.responses.length > 0) {
-                                                const findVal = (row, possibleKeys) => {
-                                                    const key = Object.keys(row).find(k =>
-                                                        possibleKeys.some(pk => k.toLowerCase().replace(/\s/g, '').includes(pk.toLowerCase().replace(/\s/g, '')))
-                                                    );
-                                                    return key ? row[key] : null;
-                                                };
-
-                                                const participantesToUpsert = result.responses.map(r => {
-                                                    return {
-                                                        evento_id: eventData.id,
-                                                        dni: r['DNI:'] || r['DNI'] || findVal(r, ['DNI']) || 'N/A',
-                                                        nombres: r['Nombres:'] || r['Nombres'] || findVal(r, ['Nombres']),
-                                                        apellidos: r['Apellidos:'] || r['Apellidos'] || findVal(r, ['Apellid']),
-                                                        correo: r['Correo electrónico (Coloca el correo institucional de Certus, ejemplo: DNI@certus.edu.pe o tu correo personal si no tienes)'] || r['Correo'] || findVal(r, ['Correo']),
-                                                        telefono: r['Número del celular activo (Nos comunicaremos a este número)'] || r['Número del celular'] || findVal(r, ['Celular', 'Telefono']),
-                                                        categoria: r['Usted como parte de la familia CERTUS es:'] || r['Ciclo:'] || findVal(r, ['familia', 'Ciclo', 'Categoria']),
-                                                        asistencia: false
-                                                    };
-                                                }).filter(p => p.dni !== 'N/A');
-
-                                                if (participantesToUpsert.length > 0) {
-                                                    await window.supabaseClient
-                                                        .from('participantes')
-                                                        .upsert(participantesToUpsert, { onConflict: 'dni, evento_id' });
-                                                }
-                                            }
-                                        } else {
-                                            throw new Error(result.message || "Error en GAS");
-                                        }
+                                    if (!partData || partData.length === 0) {
+                                        Swal.fire('Aviso', 'No hay ningún inscrito registrado en el evento. El recordatorio se generará pero no tendrá destinatarios válidos.', 'info');
                                     }
 
                                     // 4. Mostrar el Borrador usando el nuevo Modal Custom
@@ -2467,7 +2442,6 @@ document.addEventListener('DOMContentLoaded', () => {
                                     console.error(error);
                                     Swal.fire('Error', 'No se pudo generar el borrador: ' + error.message, 'error');
                                 } finally {
-                                    // Restaurar el botón original pase lo que pase
                                     if (btn) {
                                         btn.disabled = false;
                                         btn.innerHTML = originalHtml;
@@ -2538,9 +2512,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 let userEmail = '';
                                 if (eventData.responsable) {
                                     // Pilla el primero
-                                    const firstResp = eventData.responsable.split(',')[0].trim();
-                                    userPhone = phoneMap[firstResp] || '';
-                                    userEmail = emailMap[firstResp] || '[Responsable (correo electrónico)]';
+                                    const responsableParts = eventData.responsable.split(',')[0].trim();
+                                    userPhone = phoneMap[responsableParts] || '';
+                                    userEmail = emailMap[responsableParts] || '[Responsable (correo electrónico)]';
+                                    var responsableNombre = responsableParts;
                                 }
 
                                 // Determinar Sede y Horario
@@ -2587,7 +2562,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     }
                                 } catch (e) { }
 
-                                const modalModeText = eventData.modalidad === 'Virtual' ? 'a través de Zoom' : (eventData.modalidad === 'Presencial' ? `en sede ${sedesFormatted} ` : `a través de Zoom y en sede ${sedesFormatted} `);
+                                const modalModeText = eventData.modalidad === 'Virtual' ? 'a través de Zoom/Meet' : (eventData.modalidad === 'Presencial' ? `en sede ${sedesFormatted} ` : `a través de Zoom/Meet y en sede ${sedesFormatted} `);
 
                                 let formLinkTexto = `[Link del formulario INSCRIPCION AL TALLER VIRTUAL: "${eventData.nombre}" creado en la carpeta]`;
                                 try {
@@ -2611,9 +2586,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                     { id: 'draft-f5', label: 'Público Objetivo', value: eventData.audiencia || 'Público en General', isArea: false },
                                     { id: 'draft-f6', label: 'Vertical involucrada', value: 'Finanzas', isArea: false },
                                     { id: 'draft-f7', label: 'Tipo de difusión', value: 'Comunicación Interna / Comunicación Digital', isArea: false },
-                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[público objetivo]'} a participar en el evento ${eventData.tipo} "${eventData.nombre}" que se realizará el ${eventHorarioStr} ${modalModeText}, con inscripción previa, incluye constancia de participación, ponente: ${eventData.ponente} `, isArea: true },
-                                    { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: formLinkTexto, isArea: false },
-                                    { id: 'draft-f8_2', label: 'Contacto', value: `Pueden escribir a ${userEmail} o enviar un whatsapp al ${userPhone || '[numero telefonico]'} `, isArea: false },
+                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[público objetivo]'} a participar en el evento "${eventData.nombre}" que se realizará el ${eventHorarioStr} ${modalModeText}, con inscripción previa, incluye constancia de participación, ponente: ${eventData.ponente} `, isArea: true },
+                                    { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: `Link de inscripción: ${formLinkTexto}`, isArea: false },
+                                    { id: 'draft-f8_2', label: 'Contacto', value: `Pueden escribir a ${responsableNombre} (${userEmail}) o enviar un whatsapp al ${userPhone || '[numero telefonico]'} `, isArea: false },
                                     { id: 'draft-f9', label: 'Plazo de entrega del pedido', value: plazoEntregaStr, isArea: false },
                                     { id: 'draft-f10', label: 'Urgencia del Pedido', value: 'No', isArea: false }
                                 ];
@@ -2621,21 +2596,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                 let htmlGrid = '<div style="display: flex; flex-direction: column; gap: 1rem; text-align: left; max-height: 60vh; overflow-y: auto; overflow-x: hidden; padding-right: 15px; width: 100%; box-sizing: border-box;">';
                                 draftFields.forEach(f => {
                                     let btnExtra = '';
-                                    if (f.id === 'draft-f8_1') {
-                                        // Extra logic to fetch link if missing
-                                        const storedFolderUrl = (window.currentEventRequisitos && window.currentEventRequisitos.folder_url) || '';
-                                        btnExtra = `<button onclick="window.fetchDraftFormLink(this, '${storedFolderUrl}', ${eventData.id})" class="btn-fetch-link" style="width: 38px; height: 38px; min-width: 38px; border-radius: 6px; background: #3b82f6; border: 1px solid #2563eb; color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; padding: 0; box-sizing: border-box; margin-right: 5px;" title="Obtener link directo de Drive" onmouseover="this.style.background='#2563eb';" onmouseout="this.style.background='#3b82f6';">
-                                                <i class="ph ph-arrows-clockwise" style="font-size: 1.2rem; pointer-events: none;"></i>
-                                        </button>`;
-                                    }
+                                    // El usuario pidió quitar el botón de actualización azul
 
                                     htmlGrid += `
                                         <div style="width: 100%; box-sizing: border-box;">
                                             <label style="font-size: 0.85rem; font-weight: bold; color: #475569; margin-bottom: 0.3rem; display: block;">${f.label}</label>
                                             <div style="display: flex; gap: 8px; align-items: flex-start; width: 100%; box-sizing: border-box;">
                                                 ${f.isArea ?
-                                            `<textarea id="${f.id}" readonly style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: vertical; min-height: 100px; font-family: inherit; box-sizing: border-box; outline: none;">${f.value}</textarea>` :
-                                            `<input type="text" id="${f.id}" readonly value='${f.value}' style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; font-family: inherit; box-sizing: border-box; outline: none;">`
+                                            `<textarea id="${f.id}" style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; resize: vertical; min-height: 100px; font-family: inherit; box-sizing: border-box; outline: none;">${f.value}</textarea>` :
+                                            `<input type="text" id="${f.id}" value='${f.value}' style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; font-family: inherit; box-sizing: border-box; outline: none;">`
                                         }
                                                 ${btnExtra}
                                                 <button class="btn-copy-field" data-target="${f.id}" style="width: 38px; height: 38px; min-width: 38px; border-radius: 6px; background: #e2e8f0; border: 1px solid #cbd5e1; color: #475569; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; padding: 0; box-sizing: border-box;" title="Copiar este campo" onmouseover="this.style.background='#cbd5e1'; this.style.color='#1e293b';" onmouseout="this.style.background='#e2e8f0'; this.style.color='#475569';">
@@ -2950,7 +2919,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             // --- NORMAL YES/NO CHECKBOXES ---
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
-                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">
+                                        ${r.label}
+                                        ${(eventData.is_public === false && (currentStep === 2 || r.id === 'solicitado_foto' || r.id === 'compartido_asistencia')) ? '<span style="color:#64748b; font-size: 0.8rem; font-weight: normal;">(Opcional)</span>' : ''}
+                                    </label>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
@@ -2965,13 +2937,13 @@ document.addEventListener('DOMContentLoaded', () => {
                                             <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
                                         </div>
                                     </label>
-                                    ${(r.id === 'compartido_asistencia' && reqData.form_asistencia_url) ?
-                                    `<a href="${reqData.form_asistencia_url}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Asistencia">
+                                    ${(r.id === 'comunicado_delegados') ?
+                                    `<a href="formulario.html?id=${eventData.id}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Inscripción">
                                             <i class="ph ph-eye"></i> Form
                                         </a>` : ''
                                 }
-                                    ${(r.id === 'comunicado_delegados' && reqData.form_inscripcion_url) ?
-                                    `<a href="${reqData.form_inscripcion_url}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Inscripción">
+                                    ${(r.id === 'compartido_asistencia') ?
+                                    `<a href="asistencia.html?id=${eventData.id}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Asistencia">
                                             <i class="ph ph-eye"></i> Form
                                         </a>` : ''
                                 }
@@ -3103,7 +3075,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (currentStep > 0 && eventData.estado_especial !== 'Cancelado' && eventData.estado_especial !== 'Postergado') {
             btnRetroceder.style.display = 'inline-flex';
-            btnRetroceder.onclick = () => advanceStatus(eventData, currentStep - 1, true);
+            btnRetroceder.onclick = () => {
+                let prevStep = currentStep - 1;
+                if (isInterno && (currentStep === 5 || currentStep === 6)) {
+                    prevStep = 3;
+                }
+                advanceStatus(eventData, prevStep, true);
+            };
         } else {
             btnRetroceder.style.display = 'none';
         }
@@ -3282,13 +3260,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw updateError;
             }
 
-            // Sync status to sheets
-            await syncToGoogleSheets("actualizar_estado", {
+            // Sync status to sheets (Fired without await to prevent UI blocking/delays)
+            syncToGoogleSheets("actualizar_estado", {
                 sheet_id: eventData.sheet_id,
                 status: targetStep,
                 estado_especial: eventData.estado_especial || "",
                 ponente: newPonente || eventData.ponente
-            });
+            }).catch(console.error);
 
             Swal.fire({
                 toast: true,
@@ -3299,7 +3277,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 title: `Estado actualizado a: ${getStatusText(targetStep)} `
             });
 
-            document.getElementById('status-modal').classList.remove('active');
+            // Actualizar estado localmente y refrescar Modal sin cerrarlo
+            eventData.status = targetStep;
+            openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
             loadEvents(); // Reload Events Sync immediately
 
         } catch (e) {
@@ -3481,10 +3461,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Extract values safely
                     let dni = map.dni !== -1 ? (row[map.dni] || '') : '';
-                    let nombresRaw = map.nombres !== -1 ? (row[map.nombres] || '') : '';
-                    let apellidosRaw = map.apellidos !== -1 ? (row[map.apellidos] || '') : '';
+                    let nombresRaw = (map.nombres !== -1 ? (row[map.nombres] || '') : '').trim();
+                    let apellidosRaw = (map.apellidos !== -1 ? (row[map.apellidos] || '') : '').trim();
 
-                    let fullName = apellidosRaw ? `${apellidosRaw}, ${nombresRaw} ` : nombresRaw;
+                    // Combinación/División de Nombres y Apellidos
+                    let nombres = nombresRaw;
+                    let apellidos = apellidosRaw;
+
+                    if (!apellidos && nombres.includes(',')) {
+                        const parts = nombres.split(',');
+                        apellidos = parts[0].trim();
+                        nombres = parts[1].trim();
+                    } else if (!apellidos && nombres.includes(' ')) {
+                        // Heurística simple: si no hay apellidos pero hay espacios, 
+                        // el usuario probablemente puso todo en una sola celda.
+                        // Intentamos detectar si es "APELLIDOS NOMBRES" o "NOMBRES APELLIDOS"
+                        // Por defecto en estos formularios suele ser APELLIDOS NOMBRES
+                        const parts = nombres.split(/\s+/);
+                        if (parts.length >= 2) {
+                            // Asumimos que las primeras partes son apellidos y las últimas nombres (o viceversa)
+                            // Para ser conservadores, si no hay coma, dejamos que el usuario lo revise en la tabla.
+                        }
+                    }
+
+                    let fullName = apellidos ? `${apellidos}, ${nombres}` : nombres;
 
                     let emailInst = map.correoInst !== -1 ? (row[map.correoInst] || '') : '';
                     let emailPers = map.correoPers !== -1 ? (row[map.correoPers] || '') : '';
@@ -3528,16 +3528,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // Create Object
                     const participant = {
-                        id: i,
+                        evento_id: eventSelector.value,
                         dni: dni,
-                        nombresRaw: nombresRaw.trim(),
-                        apellidosRaw: apellidosRaw.trim(),
-                        nombre: fullName.trim(),
-                        email: finalEmail.trim(),
+                        nombres: nombres,
+                        apellidos: apellidos,
+                        correo: finalEmail.trim(),
                         telefono: telefono,
                         turno: turno.trim(),
                         ciclo: ciclo.trim(),
-                        esEgresado: esEgresado,
+                        es_egresado: esEgresado,
+                        asistencia: false, // Por defecto no es asistente, solo inscrito
                         status: status,
                         msg: msg
                     };
@@ -3565,7 +3565,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function isValidEmail(email) {
         if (!email) return false;
         // Check standard format AND specific domains
-        const regex = /^[^\s@]+@(gmail\.com|certus\.edu\.pe)$/i;
+        const regex = /^[^\s@]+@(gmail\.com|certus\.edu\.pe|hotmail\.com|outlook\.com|yahoo\.com)$/i;
         return regex.test(email.trim());
     }
 
@@ -3576,15 +3576,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tr.innerHTML = `
                                 < td > <span class="status-badge ${badgeClass}" title="${p.msg}">${badgeText}</span></td >
-            <td><input type="text" class="table-input ${p.status === 'error' && p.dni.length !== 8 ? 'invalid' : ''}" value="${p.dni}" onchange="updateParticipant(${p.id}, 'dni', this.value)" style="width: 80px;"></td>
-            <td><input type="text" class="table-input" value="${p.nombre}" onchange="updateParticipant(${p.id}, 'nombre', this.value)" style="width: 150px;"></td>
-            <td><input type="email" class="table-input ${!isValidEmail(p.email) ? 'invalid' : ''}" value="${p.email}" onchange="updateParticipant(${p.id}, 'email', this.value)" style="width: 150px;"></td>
+            <td><input type="text" class="table-input ${p.status === 'error' && p.dni.length !== 8 ? 'invalid' : ''}" value="${p.dni}" onchange="updateParticipant(${p.id || p.dni}, 'dni', this.value)" style="width: 80px;"></td>
+            <td><input type="text" class="table-input" value="${p.apellidos || ''}" onchange="updateParticipant(${p.id || p.dni}, 'apellidos', this.value)" placeholder="Apellidos" style="width: 100px;"></td>
+            <td><input type="text" class="table-input" value="${p.nombres || ''}" onchange="updateParticipant(${p.id || p.dni}, 'nombres', this.value)" placeholder="Nombres" style="width: 100px;"></td>
+            <td><input type="email" class="table-input ${!isValidEmail(p.correo) ? 'invalid' : ''}" value="${p.correo || ''}" onchange="updateParticipant(${p.id || p.dni}, 'correo', this.value)" style="width: 150px;"></td>
             <td><input type="text" class="table-input" value="${p.telefono || ''}" onchange="updateParticipant(${p.id}, 'telefono', this.value)" style="width: 90px;"></td>
             <td><input type="text" class="table-input" value="${p.turno || ''}" onchange="updateParticipant(${p.id}, 'turno', this.value)" style="width: 80px;"></td>
             <td><input type="text" class="table-input" value="${p.ciclo || ''}" onchange="updateParticipant(${p.id}, 'ciclo', this.value)" style="width: 80px;"></td>
-            <td style="text-align: center;"><input type="checkbox" ${p.esEgresado ? 'checked' : ''} onchange="updateParticipant(${p.id}, 'esEgresado', this.checked)"></td>
+            <td style="text-align: center;"><input type="checkbox" ${p.es_egresado ? 'checked' : ''} onchange="updateParticipant(${p.id || p.dni}, 'es_egresado', this.checked)"></td>
             <td>
-                <button class="btn-icon small" onclick="removeParticipant(${p.id}, this)"><i class="ph ph-trash"></i></button>
+                <button class="btn-icon small" onclick="removeParticipant(${p.id || p.dni}, this)"><i class="ph ph-trash"></i></button>
             </td>
                             `;
         tableBody.appendChild(tr);
@@ -3592,7 +3593,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Expose update function carefully or attach listeners
     window.updateParticipant = function (id, field, value) {
-        const p = parsedParticipants.find(x => x.id === id);
+        const p = parsedParticipants.find(x => x.id === id || x.dni === id);
         if (p) {
             p[field] = value;
             // Re-validate simple rules
@@ -3604,7 +3605,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     window.removeParticipant = function (id, btn) {
-        parsedParticipants = parsedParticipants.filter(x => x.id !== id);
+        parsedParticipants = parsedParticipants.filter(x => x.id !== id && x.dni !== id);
         btn.closest('tr').remove();
         // Update stats?
     };
@@ -3846,22 +3847,24 @@ document.addEventListener('DOMContentLoaded', () => {
             btnSaveParticipantsDb.disabled = true;
 
             try {
-                // Prepare array for Supabase
+                // Prepare array for Supabase - Ensure no ID is sent to rely on DNI+EVENT unique constraint
                 const payload = validParticipants.map(p => ({
-                    evento_id: eventId,
+                    evento_id: parseInt(eventId),
                     dni: p.dni,
-                    nombres: p.nombre, // We mapped fullName to 'nombre' in parser
-                    correo: p.email,
+                    nombres: p.nombres,
+                    apellidos: p.apellidos,
+                    correo: p.correo,
                     telefono: p.telefono,
                     turno: p.turno,
                     ciclo: p.ciclo,
-                    es_egresado: p.esEgresado,
-                    asistencia: true
+                    es_egresado: p.es_egresado,
+                    asistencia: true,
+                    certificado_autorizado: true
                 }));
 
                 const { data, error } = await window.supabaseClient
                     .from('participantes')
-                    .insert(payload);
+                    .upsert(payload, { onConflict: 'dni, evento_id' });
 
                 if (error) throw error;
 
@@ -3877,7 +3880,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             } catch (err) {
                 console.error("Error guardando participantes:", err);
-                Swal.fire('Error', 'No se pudieron guardar los participantes en la base de datos: ' + err.message, 'error');
+                const errorMsg = err.message || (err.error ? err.error.message : "Error desconocido");
+                Swal.fire('Error', 'No se pudieron guardar los participantes en la base de datos: ' + errorMsg, 'error');
             } finally {
                 btnSaveParticipantsDb.innerHTML = originalIcon;
                 btnSaveParticipantsDb.disabled = false;
@@ -4451,8 +4455,10 @@ async function openParticipantReviewModal(eventId, showOnlyAttendees = false) {
     }
 
     window.currentEventIdForReview = eventId;
+    window.showingOnlyAttendeesInModal = showOnlyAttendees; // Global flag
     const modal = document.getElementById('participant-review-modal');
     const tableBody = document.getElementById('modal-participants-table-body');
+    const tableHeader = modal.querySelector('thead tr');
 
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
@@ -4460,7 +4466,27 @@ async function openParticipantReviewModal(eventId, showOnlyAttendees = false) {
     // Eliminar aria-hidden del contenedor principal si existe para evitar conflictos de accesibilidad
     document.querySelector('.app-container')?.setAttribute('aria-hidden', 'true');
 
-    tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>';
+    // Actualizar Encabezado Dinámicamente
+    if (tableHeader) {
+        let headers = `
+            <th width="40"><input type="checkbox" id="select-all-participants" onclick="toggleSelectAllParticipants(this.checked)"></th>
+            <th>DNI</th>
+            <th>Nombres</th>
+            <th>Apellidos</th>
+            <th>Correo</th>
+            <th>Celular</th>
+        `;
+        if (showOnlyAttendees) {
+            headers += `<th>Asistió</th>`;
+        }
+        headers += `
+            <th>Estado</th>
+            <th width="40"></th>
+        `;
+        tableHeader.innerHTML = headers;
+    }
+
+    tableBody.innerHTML = `<tr><td colspan="${showOnlyAttendees ? 9 : 8}" style="text-align:center; padding: 2rem;"><i class="ph ph-circle-notch ph-spin"></i> Cargando participantes...</td></tr>`;
 
     // Actualizar título del modal dinámicamente
     const modalTitle = document.getElementById('participant-review-title');
@@ -4476,16 +4502,14 @@ async function openParticipantReviewModal(eventId, showOnlyAttendees = false) {
 
 
     try {
-        // Asegurarse de que eventId sea el tipo correcto (entero según el esquema)
         const idToQuery = parseInt(eventId);
+        const tableName = showOnlyAttendees ? 'asistencias' : 'participantes';
 
         const { data, error } = await window.supabaseClient
-            .from('participantes')
+            .from(tableName)
             .select('*')
             .eq('evento_id', idToQuery);
 
-        // Quitamos el .order('apellidos') por ahora por si la columna no existe aún
-        // Ordenaremos en memoria para ser más robustos
         if (error) throw error;
 
         let participants = data || [];
@@ -4521,6 +4545,7 @@ function renderReviewTable(participants) {
 
     tableBody.innerHTML = '';
     window.lastRenderedParticipants = participants;
+    const showAsistencia = window.showingOnlyAttendeesInModal;
 
     let okCount = 0;
     let obsCount = 0;
@@ -4535,7 +4560,7 @@ function renderReviewTable(participants) {
     modal.setAttribute('aria-hidden', 'false');
 
     if (!participants || participants.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding: 2rem; color: #94a3b8;">No hay participantes registrados.</td></tr>';
+        tableBody.innerHTML = `<tr><td colspan="${showAsistencia ? 9 : 8}" style="text-align:center; padding: 2rem; color: #94a3b8;">No hay participantes registrados.</td></tr>`;
     } else {
         participants.forEach((p, index) => {
             const validation = validateParticipant(p);
@@ -4543,7 +4568,8 @@ function renderReviewTable(participants) {
 
             const tr = document.createElement('tr');
             tr.className = 'participant-row';
-            tr.innerHTML = `
+
+            let rowHtml = `
                 <td><input type="checkbox" class="participant-check" checked onchange="toggleParticipantSelection()" data-index="${index}"></td>
                 <td><input type="text" class="inline-edit ${validation.errors.dni ? 'field-error' : ''}" value="${p.dni || ''}" 
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'dni', this.value)"></td>
@@ -4555,10 +4581,14 @@ function renderReviewTable(participants) {
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'correo', this.value)"></td>
                 <td><input type="text" class="inline-edit ${validation.errors.telefono ? 'field-error' : ''}" value="${p.telefono || ''}" 
                     style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'telefono', this.value)"></td>
-                <td><input type="text" class="inline-edit" value="${p.categoria || ''}" 
-                    style="border:none; background:transparent;" onchange="updateLocalParticipant(${index}, 'categoria', this.value)"></td>
-                <td style="text-align:center;"><input type="checkbox" ${p.certificado_autorizado !== false ? 'checked' : ''} 
-                    onchange="updateLocalParticipant(${index}, 'certificado_autorizado', this.checked)"></td>
+            `;
+
+            if (showAsistencia) {
+                rowHtml += `<td style="text-align:center;"><input type="checkbox" ${p.asistencia === true ? 'checked' : ''} 
+                    onchange="updateLocalParticipant(${index}, 'asistencia', this.checked)"></td>`;
+            }
+
+            rowHtml += `
                 <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
                 <td style="display: flex; gap: 4px;">
                     <button type="button" class="btn-icon" title="Previsualizar Constancia" onclick="previewSingleCertLocal(${index})">
@@ -4569,6 +4599,7 @@ function renderReviewTable(participants) {
                     </button>
                 </td>
             `;
+            tr.innerHTML = rowHtml;
             tableBody.appendChild(tr);
         });
     }
@@ -4708,18 +4739,110 @@ function addParticipantsToDraft() {
     }
 }
 
-function copyReminderDraft() {
-    const to = document.getElementById('rem-draft-to').value;
-    const cc = document.getElementById('rem-draft-cc').value;
-    const cco = document.getElementById('rem-draft-cco').value;
-    const subject = document.getElementById('rem-draft-subject').value;
-    const body = document.getElementById('rem-draft-text').value;
+// Funcionalidad para copiar el enlace del formulario nativo
+window.copyFormLink = function (eventId) {
+    const baseUrl = window.location.href.split('?')[0].replace('/index.html', '').replace(/\/$/, "");
+    const formUrl = `${baseUrl}/formulario.html?id=${eventId}`;
 
-    const fullText = `PARA: ${to}\nCC: ${cc}\nCCO: ${cco}\nASUNTO: ${subject}\n\n${body}`;
-
-    navigator.clipboard.writeText(fullText).then(() => {
-        Swal.fire('Copiado', 'Toda la información del correo ha sido copiada al portapapeles.', 'success');
+    navigator.clipboard.writeText(formUrl).then(() => {
+        Swal.fire({
+            toast: true, position: 'top-end', icon: 'success',
+            title: 'Enlace copiado', text: 'Se copió el enlace y se abrirá en una nueva pestaña.',
+            showConfirmButton: false, timer: 3000
+        });
+        // Abrir en nueva ventana
+        window.open(formUrl, '_blank');
+    }).catch(err => {
+        window.open(formUrl, '_blank');
+        prompt('Copia manualmente este enlace de inscripción:', formUrl);
     });
+};
+
+window.copyAsistenciaLink = function (eventId) {
+    const baseUrl = window.location.href.split('?')[0].replace('/index.html', '').replace(/\/$/, "");
+    const formUrl = `${baseUrl}/asistencia.html?id=${eventId}`;
+
+    navigator.clipboard.writeText(formUrl).then(() => {
+        Swal.fire({
+            toast: true, position: 'top-end', icon: 'success',
+            title: 'Enlace de asistencia copiado', text: 'Se copió el enlace y se abrirá en una nueva pestaña.',
+            showConfirmButton: false, timer: 3000
+        });
+        // Abrir en nueva ventana
+        window.open(formUrl, '_blank');
+    }).catch(err => {
+        window.open(formUrl, '_blank');
+        prompt('Copia manualmente este enlace de asistencia:', formUrl);
+    });
+};
+
+function copyToClipboard(elementId, fieldName) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const text = element.value || element.innerText;
+    if (!text) {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'warning',
+            title: `El campo ${fieldName} está vacío`,
+            showConfirmButton: false,
+            timer: 2000
+        });
+        return;
+    }
+
+    navigator.clipboard.writeText(text).then(() => {
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `Copiado: ${fieldName}`,
+            showConfirmButton: false,
+            timer: 1500
+        });
+    }).catch(err => {
+        console.error('Error al copiar:', err);
+        Swal.fire('Error', 'No se pudo copiar al portapapeles', 'error');
+    });
+}
+
+function copyToClipboardHtml(elementId, fieldName) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    const htmlContent = element.innerHTML || element.value || element.innerText;
+    if (!htmlContent) {
+        Swal.fire({
+            toast: true, position: 'top-end', icon: 'warning',
+            title: `El campo ${fieldName} está vacío`, showConfirmButton: false, timer: 2000
+        });
+        return;
+    }
+
+    try {
+        const clipboardItem = new ClipboardItem({
+            'text/html': new Blob([htmlContent], { type: 'text/html' }),
+            'text/plain': new Blob([element.innerText || htmlContent.replace(/<[^>]*>?/gm, '')], { type: 'text/plain' })
+        });
+        navigator.clipboard.write([clipboardItem]).then(() => {
+            Swal.fire({
+                toast: true, position: 'top-end', icon: 'success',
+                title: `Copiado (Formato Premium): ${fieldName}`, showConfirmButton: false, timer: 1500
+            });
+        }).catch(err => {
+            console.error('Error al copiar HTML:', err);
+            // Fallback
+            navigator.clipboard.writeText(element.innerText).then(() => {
+                Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Copiado (Solo Texto): ${fieldName}`, showConfirmButton: false, timer: 1500 });
+            });
+        });
+    } catch (e) {
+        navigator.clipboard.writeText(element.innerText).then(() => {
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Copiado (Solo Texto): ${fieldName}`, showConfirmButton: false, timer: 1500 });
+        });
+    }
 }
 
 function validateParticipant(p) {
@@ -4738,11 +4861,11 @@ function validateParticipant(p) {
     const errors = {
         dni: !isDniValid,
         correo: !isEmailValid,
-        telefono: !p.telefono || (p.telefono && p.telefono.toString().replace(/\s/g, '').length < 7)
+        telefono: false // Teléfono opcional
     };
 
     return {
-        isValid: !errors.dni && !errors.correo && !errors.telefono,
+        isValid: !errors.dni && !errors.correo,
         errors: errors
     };
 }
@@ -4775,9 +4898,37 @@ document.getElementById('btn-save-participants').addEventListener('click', async
     btn.disabled = true;
 
     try {
+        // Limpieza de nombres y DNI antes de guardar - Excluir ID para evitar conflictos de restricción
+        const dataToUpsert = (window.currentParticipantsData || []).map(p => {
+            let nombres = (p.nombres || "").trim();
+            let apellidos = (p.apellidos || "").trim();
+
+            if (!apellidos && nombres.includes(',')) {
+                const parts = nombres.split(',');
+                apellidos = parts[0].trim();
+                nombres = parts[1].trim();
+            }
+
+            return {
+                evento_id: parseInt(window.currentEventIdForReview),
+                dni: p.dni,
+                nombres,
+                apellidos,
+                correo: p.correo,
+                telefono: p.telefono,
+                categoria: p.categoria,
+                turno: p.turno,
+                ciclo: p.ciclo,
+                es_egresado: p.es_egresado,
+                asistencia: p.asistencia
+            };
+        });
+
+        console.log("Upserting payload:", dataToUpsert);
+
         const { error } = await window.supabaseClient
             .from('participantes')
-            .upsert(window.currentParticipantsData, { onConflict: 'dni, evento_id' }); // Usar DNI+Evento como clave de conflicto mas confiable que ID UUID si este ultimo no se cargo bien
+            .upsert(dataToUpsert, { onConflict: 'dni, evento_id' });
 
         if (error) throw error;
 
@@ -4815,36 +4966,155 @@ function openReminderDraftModal(eventData, reqData) {
     }
     if (fechasArr.length > 0) fechasFormateadas = fechasArr.join(', ');
 
-    const linkReunionText = (reqData.prog_zoom_meet && reqData.prog_zoom_meet.trim().length > 0)
-        ? `\nEnlace de acceso a la reunión virtual: ${reqData.prog_zoom_meet}\n`
-        : (eventData.modalidad === 'Presencial' ? '' : '\n[No se especificó enlace de reunión]\n');
+    const isPresencial = eventData.modalidad === 'Presencial';
+    let linkReunion = reqData.prog_zoom_meet && reqData.prog_zoom_meet.trim().length > 0 ? reqData.prog_zoom_meet.trim() : null;
 
     const emailMap = {
-        'Eduardo': 'emamanir@certus.edu.pe',
-        'Mirko': 'mnsanchez@certus.edu.pe',
-        'José': 'jramirezp@certus.edu.pe',
-        'Jorge': 'jdurand@gmail.com',
-        'Carlos': 'cybarram@certus.edu.pe',
-        'Luis': 'lcondors@certus.edu.pe'
+        'Eduardo': 'emamanir@certus.edu.pe', 'Mirko': 'mnsanchez@certus.edu.pe',
+        'José': 'jramirezp@certus.edu.pe', 'Jorge': 'jdurand@gmail.com',
+        'Carlos': 'cybarram@certus.edu.pe', 'Luis': 'lcondors@certus.edu.pe'
     };
-    let userEmail = '';
+    const phoneMap = {
+        'Eduardo': '973590390', 'Jorge': '949665939', 'Carlos': '977180768',
+        'José': '947616127', 'Luis': '991430872', 'Mirko': '971295157'
+    };
+
+    let userEmail = 'correo@certus.edu.pe';
+    let userPhone = '999999999';
+    let userName = '[Responsable]';
     if (eventData.responsable) {
         const firstResp = eventData.responsable.split(',')[0].trim();
-        userEmail = emailMap[firstResp] || '';
+        userEmail = emailMap[firstResp] || userEmail;
+        userPhone = phoneMap[firstResp] || userPhone;
+        userName = firstResp;
     }
 
-    const draftText = `Estimados participantes,\n\nLes recordamos que están inscritos en el evento ${eventData.tipo} "${eventData.nombre}", el cual se llevará a cabo en las siguientes fechas:\n${fechasFormateadas}\n${linkReunionText}\nPor favor, recuerden ser puntuales.\n\n¡Los esperamos!`;
+    const renderHtmlDraft = (linkText) => {
+        const headerModalidad = eventData.modalidad ? eventData.modalidad.toUpperCase() : 'VIRTUAL';
+        const headerDesc = isPresencial ? `Sede ${eventData.sedes || 'Certus'}` : (eventData.modalidad === 'Híbrido' || eventData.modalidad === 'Mixto' ? `Sede ${eventData.sedes || 'Certus'} / Formato Virtual` : 'Plataforma Virtual');
 
-    // Llenar campos SOLO SI están vacíos (para persistencia)
+        let linkSection = '';
+        if (!isPresencial || linkText) {
+            const actualLink = linkText || '';
+            linkSection = `
+            <p style="margin: 20px 0 10px;">Para ingresar a la sesión virtual, haga clic en el siguiente botón:</p>
+            <div style="text-align: center; margin: 20px 0;">
+                <a href="${actualLink}" style="background-color: #004d99; color: white; padding: 12px 25px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+                    Unirse a la reunión virtual
+                </a>
+            </div>
+            ${actualLink ? `
+            <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 15px; border-radius: 6px; font-size: 13px; color: #6b7280; font-family: monospace; word-break: break-all;">
+                Enlace de acceso directo:<br>
+                <a href="${actualLink}" style="color: #004d99; text-decoration: underline;">${actualLink}</a>
+            </div>
+            ` : ''}
+            `;
+        }
+
+        return `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; color: #334155; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+            <div style="background-color: #004d99; background-image: linear-gradient(135deg, #004d99 0%, #003366 100%); color: white; padding: 25px 20px; text-align: center;">
+                <h2 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: 0.5px;">EVENTO ${headerModalidad}</h2>
+                <p style="margin: 8px 0 0; font-size: 14px; opacity: 0.9;">${fechasFormateadas} | ${headerDesc}</p>
+            </div>
+            <div style="padding: 30px;">
+                <p style="margin-top: 0;">Estimado(a) participante,</p>
+                <p>La <strong>Dirección Académica Certus</strong> le da la bienvenida y le recuerda que se realizará el evento ${eventData.tipo ? eventData.tipo.toLowerCase() : 'académico'}:</p>
+                <div style="background-color: #f0fdf4; border-left: 4px solid #16a34a; padding: 16px; margin: 20px 0; font-size: 16px; font-weight: 600; color: #166534; border-radius: 0 6px 6px 0;">
+                    "${eventData.nombre}"
+                </div>
+                ${linkSection}
+                <p style="margin-top: 20px;">Por favor, recuerde su puntual asistencia.</p>
+                
+                <p style="margin-top: 30px; border-top: 1px solid #e2e8f0; padding-top: 20px; font-size: 13px; color: #64748b; line-height: 1.5;">
+                    Para cualquier consulta adicional, puede comunicarse con:<br>
+                    <strong style="color: #475569;">${userName}</strong><br>
+                    <a href="mailto:${userEmail}" style="color: #004d99; text-decoration: none;">&#9993; ${userEmail}</a> | &#128222; ${userPhone}<br>
+                    ¡Los esperamos!
+                </p>
+            </div>
+        </div>
+        `;
+    };
+
+    const textField = document.getElementById('rem-draft-text');
+    const btnAddLink = document.getElementById('btn-add-optional-link');
+    const btnEditLink = document.getElementById('btn-edit-optional-link');
+    const btnDelLink = document.getElementById('btn-del-optional-link');
+
+    const updateLinkButtons = () => {
+        if (!linkReunion) {
+            if (btnAddLink) {
+                btnAddLink.style.display = 'inline-flex';
+                btnAddLink.innerHTML = '<i class="ph ph-link"></i> ¿Desea agregar un enlace virtual?';
+            }
+            if (btnEditLink) btnEditLink.style.display = 'none';
+            if (btnDelLink) btnDelLink.style.display = 'none';
+        } else {
+            if (btnAddLink) btnAddLink.style.display = 'none';
+            if (btnEditLink) btnEditLink.style.display = 'inline-flex';
+            if (btnDelLink) btnDelLink.style.display = 'inline-flex';
+        }
+    };
+
+    updateLinkButtons();
+
+    const askForLink = async () => {
+        const { value: url } = await Swal.fire({
+            title: 'Enlace de Reunión',
+            text: 'Ingrese el enlace de Zoom/Meet para este evento:',
+            input: 'url',
+            inputValue: linkReunion || '',
+            inputPlaceholder: 'https://zoom.us/...',
+            showCancelButton: true,
+            confirmButtonText: 'Guardar',
+            cancelButtonText: 'Cancelar'
+        });
+        if (url !== undefined) {
+            if (url.trim()) {
+                linkReunion = url.trim();
+                textField.innerHTML = renderHtmlDraft(linkReunion);
+                updateLinkButtons();
+                reqData.prog_zoom_meet = linkReunion;
+                updateReqsInDB(reqData);
+            }
+        }
+    };
+
+    if (btnAddLink) btnAddLink.onclick = askForLink;
+    if (btnEditLink) btnEditLink.onclick = askForLink;
+
+    if (btnDelLink) {
+        btnDelLink.onclick = async () => {
+            const result = await Swal.fire({
+                title: 'Quitar enlace',
+                text: '¿Está seguro que desea quitar el enlace virtual de la invitación?',
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#ef4444',
+                confirmButtonText: 'Sí, quitar',
+                cancelButtonText: 'Cancelar'
+            });
+            if (result.isConfirmed) {
+                linkReunion = null;
+                textField.innerHTML = renderHtmlDraft(linkReunion);
+                updateLinkButtons();
+                reqData.prog_zoom_meet = '';
+                updateReqsInDB(reqData);
+            }
+        };
+    }
+
+    textField.innerHTML = renderHtmlDraft(linkReunion);
+
     const toField = document.getElementById('rem-draft-to');
     const ccField = document.getElementById('rem-draft-cc');
     const subjectField = document.getElementById('rem-draft-subject');
-    const textField = document.getElementById('rem-draft-text');
 
     if (!toField.value) toField.value = userEmail;
     if (!ccField.value) ccField.value = "lhurtadoo@certus.edu.pe, jramirezp@certus.edu.pe";
     if (!subjectField.value) subjectField.value = `Recordatorio del evento: ${eventData.nombre}`;
-    if (!textField.value) textField.value = draftText;
 
     // Configurar botón de revisión
     const btnReview = document.getElementById('btn-open-review-from-draft');
@@ -4889,7 +5159,7 @@ function openCertificatesDraftModal(eventData, reqData) {
         userEmail = emailMap[firstResp] || '';
     }
 
-    const draftText = `Estimados participantes,\n\nEs un gusto saludarles. Les hacemos entrega de su constancia de participación por haber asistido al evento "${eventData.nombre}".\n\nPueden descargar su certificado en el siguiente enlace:\n[Enlace a carpeta de certificados o portal]\n\n¡Gracias por su participación!`;
+    const draftText = `Estimados participantes,\n\nEs un gusto saludarles. Les hacemos entrega de su constancia de participación por haber asistido al evento "${eventData.nombre}".\n\nPueden descargar su certificado en el siguiente enlace:\nhttps://eduardoaeges.github.io/eventos/portal.html\n\n¡Gracias por su participación!`;
 
     // Llenar campos
     const toField = document.getElementById('cert-draft-to');
@@ -4976,121 +5246,144 @@ function formatCertDates(event) {
     return { inicio: inicioStr, firma: firmaStr };
 }
 
-async function generateCertificatePDFLocal(p, event) {
-    const { jsPDF } = window.jspdf;
+async function renderCertificateToCanvasAdmin(p, event) {
+    const canvas = document.getElementById('cert-canvas-admin');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width = 1123;
+    canvas.height = 794;
 
-    // Configurar fechas
-    let inicioStr = "";
-    let lastDateObj = new Date();
-    try {
-        const horarios = JSON.parse(event.horario || '[]');
-        if (horarios.length > 0) {
-            horarios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-            const first = new Date(horarios[0].fecha + "T00:00:00");
-            const last = new Date(horarios[horarios.length - 1].fecha + "T00:00:00");
-            lastDateObj = last;
-            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-            if (horarios.length === 1 || first.getTime() === last.getTime()) {
-                inicioStr = `${first.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
-            } else if (first.getMonth() === last.getMonth()) {
-                inicioStr = `${first.getDate()} al ${last.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
-            } else {
-                inicioStr = `${first.getDate()} de ${months[first.getMonth()]} al ${last.getDate()} de ${months[last.getMonth()]} de ${first.getFullYear()}`;
-            }
-        } else {
-            const d = new Date((event.fecha_inicio || new Date().toISOString().split('T')[0]) + "T00:00:00");
-            const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-            inicioStr = `${d.getDate()} de ${months[d.getMonth()]} de ${d.getFullYear()}`;
-            lastDateObj = d;
-        }
-    } catch (e) { console.error(e); }
+    const res = setupDates(event);
+    const inicioStr = res.inicio;
+    const firmaStr = res.firma;
 
-    const firmaDate = new Date(lastDateObj);
-    firmaDate.setDate(firmaDate.getDate() + 1);
-    const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-    const firmaStr = `${firmaDate.getDate()} de ${months[firmaDate.getMonth()]} de ${firmaDate.getFullYear()}`;
+    const baseImg = new Image();
+    baseImg.src = 'constancia_base.png';
+    
+    return new Promise((resolve) => {
+        baseImg.onload = () => {
+            ctx.drawImage(baseImg, 0, 0, 1123, 794);
 
-    // Crear PDF Paisaje
-    const pdf = new jsPDF({
-        orientation: 'landscape',
-        unit: 'px',
-        format: [1123, 794] // Tamaño de la imagen base
-    });
+            // 1. "CONSTANCIA"
+            ctx.fillStyle = '#112b69'; // Azul CERTUS
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = '800 68px Cinzel, serif';
+            ctx.fillText("CONSTANCIA", 561, 150);
 
-    // Cargar imagen base
-    const imgPath = 'constancia_base.png';
+            // 2. "otorgada a:"
+            ctx.font = 'italic 20px "Libre Baskerville", serif';
+            ctx.fillStyle = '#334155';
+            ctx.fillText("otorgada a:", 561, 195);
 
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.src = imgPath;
-        img.onload = () => {
-            // Dibujar imagen de fondo
-            pdf.addImage(img, 'PNG', 0, 0, 1123, 794);
-
-            // Configuración de texto
-            pdf.setTextColor(17, 43, 105); // Azul CERTUS (revisado de la imagen)
-
-            // 1. Apellidos y Nombres (Aumentado para mayor presencia)
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(42);
+            // 3. Apellidos y Nombres
             const fullName = `${(p.apellidos || '').toUpperCase()} ${(p.nombres || '').toUpperCase()}`.trim();
-            pdf.text(fullName, 561, 310, { align: 'center' });
+            ctx.font = '800 32px "Outfit", sans-serif'; 
+            ctx.fillStyle = '#112b69';
+            ctx.fillText(fullName, 561, 260);
 
-            // 2. "Por participar en el webinar"
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(18);
-            pdf.setTextColor(30, 41, 59); // Slate-800
-            pdf.text(`Por participar en el ${event.tipo || 'webinar'}`, 561, 410, { align: 'center' });
+            // 3.5 Línea decorativa
+            const gradient = ctx.createLinearGradient(150, 0, 973, 0);
+            gradient.addColorStop(0, 'rgba(17, 43, 105, 0)');
+            gradient.addColorStop(0.2, 'rgba(17, 43, 105, 0.8)');
+            gradient.addColorStop(0.8, 'rgba(17, 43, 105, 0.8)');
+            gradient.addColorStop(1, 'rgba(17, 43, 105, 0)');
 
-            // 3. Nombre del Webinar (Más grande y bold)
-            pdf.setFont("helvetica", "bold");
-            pdf.setFontSize(32);
-            pdf.setTextColor(17, 43, 105);
-            pdf.text((event.nombre || '').toUpperCase(), 561, 450, { align: 'center' });
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(200, 290);
+            ctx.lineTo(923, 290);
+            ctx.stroke();
 
-            // 4. Texto legal/organizativo
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(15);
-            pdf.setTextColor(30, 41, 59);
-            const legalText = `organizado por la Dirección Académica de la Escuela de Educación Superior`;
-            pdf.text(legalText, 561, 495, { align: 'center' });
+            // 4. "Por participar en..."
+            const type = (event.tipo || 'webinar').toLowerCase();
+            let article = 'el';
+            if (type.includes('apertura') || type.includes('reunión') || type.includes('clase') || type.includes('sesión')) article = 'la';
 
-            const legalText2 = `CERTUS, que se realizó el ${inicioStr}.`;
-            pdf.text(legalText2, 561, 515, { align: 'center' });
+            ctx.font = '400 20px Outfit, sans-serif';
+            ctx.fillStyle = '#1e293b';
+            ctx.fillText(`Por participar en ${article} ${type}`, 561, 335);
 
-            // 5. Fecha de firma (Lima, ...)
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(14);
-            pdf.setTextColor(100, 116, 139); // Slate-500
-            pdf.text(`Lima, ${firmaStr}`, 561, 575, { align: 'center' });
+            // 5. Nombre del Evento
+            ctx.font = 'bold 28px Outfit, sans-serif';
+            ctx.fillStyle = '#112b69';
+            const eventTitle = (event.nombre || '').toUpperCase();
+            const maxTitleWidth = 850;
+            
+            // Reutilizamos wrapTextCanvas si está disponible o implementamos una rápida aquí
+            const words = eventTitle.split(' ');
+            let line = '';
+            let y = 375;
+            let lineCount = 0;
+            for (let n = 0; n < words.length; n++) {
+                const testLine = line + words[n] + ' ';
+                const metrics = ctx.measureText(testLine);
+                if (metrics.width > maxTitleWidth && n > 0) {
+                    ctx.fillText(line.trim(), 561, y);
+                    line = words[n] + ' ';
+                    y += 32;
+                    lineCount++;
+                } else {
+                    line = testLine;
+                }
+            }
+            ctx.fillText(line.trim(), 561, y);
+            lineCount++;
+            
+            const titleExtraHeight = (lineCount - 1) * 32;
 
-            // 6. Código Correlativo de Registro (Folio)
-            pdf.setFont("helvetica", "normal");
-            pdf.setFontSize(9);
-            pdf.setTextColor(148, 163, 184); // Slate-400
+            // 6. Texto legal
+            ctx.font = '16px Outfit, sans-serif';
+            ctx.fillStyle = '#334155';
+            ctx.fillText(`organizado por la Dirección Académica de la Escuela de Educación Superior`, 561, 420 + titleExtraHeight);
+            ctx.fillText(`CERTUS, que se realizó el ${inicioStr}.`, 561, 442 + titleExtraHeight);
+
+            // 7. Fecha de firma
+            ctx.font = 'italic 16px "Libre Baskerville", serif';
+            ctx.fillStyle = '#475569';
+            ctx.fillText(`Lima, ${firmaStr}`, 561, 495 + titleExtraHeight);
+
+            // 8. Folio
+            ctx.font = '11px "Inter", sans-serif';
+            ctx.fillStyle = '#94a3b8';
+            ctx.textAlign = 'left';
             const typePrefixes = { 'Webinar': 'WBN', 'Taller': 'TLR', 'Apertura Académica': 'APR', 'Curso': 'CUR', 'Seminario': 'SEM', 'Conferencia': 'CONF' };
             const prefix = typePrefixes[event.tipo] || 'EVT';
-            const eventIdPart = String(event.id || '0').padStart(4, '0');
-            const studentIdPart = p.dni || '00000000';
-            const randomPart = Math.random().toString(36).substring(2, 5).toUpperCase();
-            const regCode = `Folio N°: ${prefix}-${eventIdPart}-${studentIdPart}-${randomPart}`;
-            pdf.text(regCode, 45, 765);
+            const regCode = `Folio N°: ${prefix}-${String(event.id).padStart(4, '0')}-${p.dni || '00000000'}`;
+            ctx.fillText(regCode, 45, 765);
 
-            // Guardar o Previsualizar
-            if (arguments[2] === true) { // Si el tercer argumento (isPreview) es true
-                const blobUrl = pdf.output('bloburl');
-                window.open(blobUrl, '_blank');
-            } else {
-                pdf.save(`${p.dni}_${event.sheet_id || 'CERT'}.pdf`);
-            }
-            resolve(pdf);
-        };
-        img.onerror = (err) => {
-            console.error("Error al cargar la imagen base:", err);
-            reject(err);
+            resolve();
         };
     });
 }
+
+async function generateCertificatePDFLocal(p, event) {
+    const { jsPDF } = window.jspdf;
+
+    await renderCertificateToCanvasAdmin(p, event);
+    const canvas = document.getElementById('cert-canvas-admin');
+
+    const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'px',
+        format: [1123, 794]
+    });
+
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    pdf.addImage(imgData, 'PNG', 0, 0, 1123, 794, undefined, 'FAST');
+
+    // Guardar o Previsualizar
+    if (arguments[2] === true) { // Si el tercer argumento (isPreview) es true
+        const blobUrl = pdf.output('bloburl');
+        window.open(blobUrl, '_blank');
+    } else {
+        const eventId = String(event.id || '0').padStart(3, '0');
+        pdf.save(`Constancia_${p.dni}_${eventId}.pdf`);
+    }
+    return pdf;
+}
+
 
 window.generateCertificatesPDF = async function () {
     const event = window.currentDraftEventData;
@@ -5151,7 +5444,7 @@ window.generateCertificatesPDF = async function () {
         // Si no hay selección manual o el modal no está abierto, buscar en Supabase (comportamiento por defecto)
         if (participants.length === 0) {
             const { data, error } = await window.supabaseClient
-                .from('participantes')
+                .from('asistencias')
                 .select('*')
                 .eq('evento_id', event.id)
                 .eq('asistencia', true);
@@ -5212,7 +5505,7 @@ window.generateCertificatesPDF = async function () {
             // Actualizar Supabase uno por uno
             for (const item of updates) {
                 await window.supabaseClient
-                    .from('participantes')
+                    .from('asistencias')
                     .update({ certificado_url: item.url })
                     .eq('dni', item.dni)
                     .eq('evento_id', event.id);
@@ -5251,7 +5544,7 @@ window.toggleParticipantSelection = toggleParticipantSelection;
 window.deleteSingleParticipant = deleteSingleParticipant;
 window.deleteSelectedParticipants = deleteSelectedParticipants;
 window.addParticipantsToDraft = addParticipantsToDraft;
-window.copyReminderDraft = copyReminderDraft;
+window.copyToClipboard = copyToClipboard;
 
 window.previewSingleCertLocal = async function (index) {
     const p = window.lastRenderedParticipants[index];
@@ -5317,16 +5610,37 @@ window.confirmSelectedAsistentes = async function () {
     });
 
     try {
-        const ids = participants.map(p => p.id);
+        // Preparar payload con limpieza de nombres y upsert
+        const payload = participants.map(p => {
+            let nombres = (p.nombres || "").trim();
+            let apellidos = (p.apellidos || "").trim();
 
-        // 1. Actualizar Supabase (asistencia y autorizado)
-        const { error } = await window.supabaseClient
-            .from('participantes')
-            .update({
+            // Corrección dinámica de nombres si vienen juntos (ej: "Apellidos, Nombres")
+            if (!apellidos && nombres.includes(',')) {
+                const parts = nombres.split(',');
+                apellidos = parts[0].trim();
+                nombres = parts[1].trim();
+            }
+
+            return {
+                evento_id: parseInt(window.currentEventIdForReview),
+                dni: p.dni,
+                nombres: nombres,
+                apellidos: apellidos,
+                correo: p.correo,
+                telefono: p.telefono,
+                turno: p.turno,
+                ciclo: p.ciclo,
+                es_egresado: p.es_egresado,
                 asistencia: true,
                 certificado_autorizado: true
-            })
-            .in('id', ids);
+            };
+        });
+
+        // 1. Upsert en Supabase (DNI + evento_id como clave única)
+        const { error } = await window.supabaseClient
+            .from('asistencias')
+            .upsert(payload, { onConflict: 'dni, evento_id' });
 
         if (error) throw error;
 
@@ -5347,16 +5661,17 @@ window.confirmSelectedAsistentes = async function () {
 
         Swal.fire({
             title: '¡Confirmado!',
-            text: `${participants.length} asistentes procesados. Se han actualizado en la base de datos y agregado a los borradores de envío.`,
+            text: `${participants.length} asistentes procesados. Se han guardado/actualizado en la base de datos y agregado a los borradores de envío.`,
             icon: 'success'
         });
 
-        // Recargar la tabla si el modal sigue abierto
-        openParticipantReviewModal(window.currentEventIdForReview, true);
+        // Recargar la tabla para mostrar los datos limpios y el nuevo estado
+        openParticipantReviewModal(window.currentEventIdForReview);
 
     } catch (err) {
-        console.error(err);
-        Swal.fire('Error', 'No se pudo completar la operación: ' + err.message, 'error');
+        console.error("Error confirmando asistentes:", err);
+        const errorMsg = err.message || (err.error ? err.error.message : "Error desconocido");
+        Swal.fire('Error', 'No se pudo completar la operación: ' + errorMsg, 'error');
     }
 };
 
@@ -5382,7 +5697,7 @@ window.generateCertificatesPDFLocalBulk = async function () {
     if (participants.length === 0) {
         // Fallback: cargar asistentes de Supabase
         const { data, error } = await window.supabaseClient
-            .from('participantes')
+            .from('asistencias')
             .select('*')
             .eq('evento_id', event.id)
             .eq('asistencia', true);
@@ -5460,11 +5775,13 @@ window.addEventListener('click', (e) => {
 $(document).ready(function () {
     let currentComEventId = null;
     let comParticipants = [];
+    let asistParticipants = []; // Nueva lista para asistentes
 
     // On Event Change
     $('#comunicacion-event-selector').on('change', async function () {
         currentComEventId = $(this).val();
         loadComParticipants();
+        loadAsistParticipants(); // Cargar también asistentes
     });
 
     async function loadComParticipants() {
@@ -5507,7 +5824,29 @@ $(document).ready(function () {
             return;
         }
 
+        // Pre-calcular duplicados por DNI para mostrar estatus
+        const dniCount = {};
+        comParticipants.forEach(p => {
+            if (p.dni) {
+                dniCount[p.dni] = (dniCount[p.dni] || 0) + 1;
+            }
+        });
+
+        // Ordenar por apellidos antes de renderizar
+        comParticipants.sort((a, b) => (a.apellidos || '').localeCompare(b.apellidos || '', 'es', { sensitivity: 'base' }));
+
         comParticipants.forEach((p, index) => {
+            let statusBadge = '<span class="status-badge ok">Correcto</span>';
+            let statusClass = 'ok';
+
+            if (!p.dni || !p.nombres || !p.apellidos) {
+                statusBadge = '<span class="status-badge warning">Faltan Datos</span>';
+                statusClass = 'warning';
+            } else if (dniCount[p.dni] > 1) {
+                statusBadge = '<span class="status-badge error">Duplicado</span>';
+                statusClass = 'error';
+            }
+
             const tr = document.createElement('tr');
             tr.dataset.index = index;
             tr.innerHTML = `
@@ -5517,6 +5856,7 @@ $(document).ready(function () {
                 <td contenteditable="true" class="editable-cell" data-field="nombres">${p.nombres || ''}</td>
                 <td contenteditable="true" class="editable-cell" data-field="correo">${p.correo || ''}</td>
                 <td contenteditable="true" class="editable-cell" data-field="telefono">${p.telefono || ''}</td>
+                <td style="text-align:center;">${statusBadge}</td>
                 <td>
                     <button class="btn-icon-remove com-row-delete" title="Eliminar"><i class="ph ph-trash"></i></button>
                 </td>
@@ -5576,15 +5916,287 @@ $(document).ready(function () {
         const textarea = document.getElementById('com-generated-emails');
         if (!textarea) return;
 
-        const checked = Array.from(document.querySelectorAll('.com-row-check:checked'))
-            .map(cb => parseInt(cb.value));
+        // Combinar marcados de ambas tablas
+        const checkedCom = Array.from(document.querySelectorAll('.com-row-check:checked'))
+            .map(cb => comParticipants[parseInt(cb.value)]?.correo);
+        
+        const checkedAsist = Array.from(document.querySelectorAll('.asist-row-check:checked'))
+            .map(cb => asistParticipants[parseInt(cb.value)]?.correo);
 
-        const emails = checked.map(idx => comParticipants[idx].correo)
+        const emails = [...checkedCom, ...checkedAsist]
             .filter(e => e && e.includes('@'));
-        textarea.value = emails.join(', ');
+        
+        textarea.value = [...new Set(emails)].join(', '); // Eliminar duplicados visuales en el textarea
     }
 
+    // --- LOGICA PARA ASISTENTES (TABLA 2.1) ---
+    async function loadAsistParticipants() {
+        const tbody = document.getElementById('asist-participants-tbody');
+        const statusSpan = document.getElementById('asist-table-status');
+
+        if (!currentComEventId) return;
+
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 2rem;">Cargando...</td></tr>';
+        statusSpan.textContent = 'Cargando asistentes...';
+
+        try {
+            const { data, error } = await window.supabaseClient
+                .from('asistencias')
+                .select('*')
+                .eq('evento_id', currentComEventId)
+                .order('apellidos', { ascending: true });
+
+            if (error) throw error;
+            asistParticipants = data || [];
+            renderAsistTable();
+        } catch (error) {
+            console.error(error);
+            tbody.innerHTML = `<tr><td colspan="8" style="color:red; text-align:center;">Error al cargar asistentes: ${error.message}</td></tr>`;
+            statusSpan.textContent = 'Error de carga';
+        }
+    }
+
+    function renderAsistTable() {
+        const tbody = document.getElementById('asist-participants-tbody');
+        const statusSpan = document.getElementById('asist-table-status');
+
+        tbody.innerHTML = '';
+        if (asistParticipants.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; padding: 2rem;">No hay asistentes registrados para este evento.</td></tr>';
+            statusSpan.textContent = '0 asistentes';
+            attachAsistTableEvents();
+            return;
+        }
+
+        const dniCount = {};
+        asistParticipants.forEach(p => { if (p.dni) dniCount[p.dni] = (dniCount[p.dni] || 0) + 1; });
+
+        // Ordenar por apellidos antes de renderizar
+        asistParticipants.sort((a, b) => (a.apellidos || '').localeCompare(b.apellidos || '', 'es', { sensitivity: 'base' }));
+
+        asistParticipants.forEach((p, index) => {
+            let statusBadge = '<span class="status-badge ok">Correcto</span>';
+            if (!p.dni || !p.nombres || !p.apellidos) statusBadge = '<span class="status-badge warning">Faltan Datos</span>';
+            else if (dniCount[p.dni] > 1) statusBadge = '<span class="status-badge error">Duplicado</span>';
+
+            const tr = document.createElement('tr');
+            tr.dataset.index = index;
+            tr.innerHTML = `
+                <td style="text-align:center;"><input type="checkbox" class="asist-row-check" value="${index}"></td>
+                <td contenteditable="true" class="editable-cell-asist" data-field="dni">${p.dni || ''}</td>
+                <td contenteditable="true" class="editable-cell-asist" data-field="apellidos">${p.apellidos || ''}</td>
+                <td contenteditable="true" class="editable-cell-asist" data-field="nombres">${p.nombres || ''}</td>
+                <td contenteditable="true" class="editable-cell-asist" data-field="correo">${p.correo || ''}</td>
+                <td contenteditable="true" class="editable-cell-asist" data-field="telefono">${p.telefono || ''}</td>
+                <td style="text-align:center;">${statusBadge}</td>
+                <td>
+                    <button class="btn-icon-remove asist-row-delete" title="Eliminar"><i class="ph ph-trash"></i></button>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+        statusSpan.textContent = `${asistParticipants.length} asistentes (cambios locales sin guardar)`;
+        attachAsistTableEvents();
+        updateGeneratedEmails();
+    }
+
+    function attachAsistTableEvents() {
+        document.querySelectorAll('.editable-cell-asist').forEach(cell => {
+            cell.addEventListener('blur', function () {
+                const tr = this.closest('tr');
+                const idx = tr.dataset.index;
+                const field = this.dataset.field;
+                let val = this.innerText.trim();
+
+                // Separar apellidos y nombres si vienen juntos con coma (Manual)
+                if ((field === 'apellidos' || field === 'nombres') && val.includes(',')) {
+                    const parts = val.split(',');
+                    const apellidos = parts[0].trim();
+                    const nombres = parts[1].trim();
+                    asistParticipants[idx].apellidos = apellidos;
+                    asistParticipants[idx].nombres = nombres;
+                    renderAsistTable(); // Re-renderizar para mostrar los campos separados
+                    return;
+                }
+
+                asistParticipants[idx][field] = val;
+                document.getElementById('asist-table-status').textContent = 'Hay asistentes con cambios sin guardar';
+            });
+        });
+
+        document.querySelectorAll('.asist-row-delete').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const tr = this.closest('tr');
+                const idx = parseInt(tr.dataset.index);
+                asistParticipants.splice(idx, 1);
+                renderAsistTable();
+            });
+        });
+
+        const selectAll = document.getElementById('asist-select-all');
+        if (selectAll) {
+            const newSelectAll = selectAll.cloneNode(true);
+            selectAll.parentNode.replaceChild(newSelectAll, selectAll);
+            newSelectAll.addEventListener('change', function () {
+                const isChecked = this.checked;
+                document.querySelectorAll('.asist-row-check').forEach(cb => { cb.checked = isChecked; });
+                updateGeneratedEmails();
+            });
+        }
+
+        document.querySelectorAll('.asist-row-check').forEach(cb => {
+            cb.addEventListener('change', updateGeneratedEmails);
+        });
+    }
+
+    // Botones Asistentes
+    document.getElementById('btn-asist-load-native')?.addEventListener('click', loadAsistParticipants);
+
+    document.getElementById('btn-asist-add-row')?.addEventListener('click', function () {
+        if (!currentComEventId) { Swal.fire('Atención', 'Seleccione un evento primero', 'warning'); return; }
+        asistParticipants.unshift({ evento_id: currentComEventId, dni: '', apellidos: '', nombres: '', correo: '', telefono: '', asistencia: true });
+        renderAsistTable();
+    });
+
+    document.getElementById('btn-asist-delete-selected')?.addEventListener('click', async function () {
+        const checks = Array.from(document.querySelectorAll('.asist-row-check:checked'));
+        if (checks.length === 0) return;
+        const result = await Swal.fire({ title: 'Atención', text: '¿Desea eliminar las filas seleccionadas localmente?', icon: 'warning', showCancelButton: true, confirmButtonText: 'Eliminar' });
+        if (result.isConfirmed) {
+            const indices = checks.map(cb => parseInt(cb.value));
+            asistParticipants = asistParticipants.filter((_, idx) => !indices.includes(idx));
+            renderAsistTable();
+        }
+    });
+
+    document.getElementById('btn-asist-save-db')?.addEventListener('click', async function () {
+        if (!currentComEventId) { Swal.fire('Atención', 'Seleccione un evento', 'warning'); return; }
+        const result = await Swal.fire({ 
+            title: '¿Guardar datos en evento?', 
+            text: 'Se sincronizarán los asistentes con el evento seleccionado. Los datos se fusionarán por DNI.', 
+            icon: 'question', 
+            showCancelButton: true, 
+            confirmButtonText: 'Sí, Guardar datos' 
+        });
+        if (result.isConfirmed) {
+            Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+                const filtered = asistParticipants.filter(p => (p.nombres || p.apellidos || p.dni));
+                const uniqueData = new Map();
+                filtered.forEach(p => {
+                    const key = p.dni || `no-dni-${Math.random()}`;
+                    uniqueData.set(key, { ...p, evento_id: parseInt(currentComEventId), asistencia: true, certificado_autorizado: true });
+                });
+                const toSave = Array.from(uniqueData.values()).map(p => { if (!p.id) delete p.id; return p; });
+                const { error } = await window.supabaseClient.from('asistencias').upsert(toSave, { onConflict: 'dni, evento_id' });
+                if (error) throw error;
+                Swal.fire('Guardado', `Asistentes sincronizados correctamente (${toSave.length} únicos).`, 'success');
+                loadAsistParticipants();
+            } catch (err) {
+                console.error(err);
+                Swal.fire('Error', 'Error al guardar asistentes: ' + err.message, 'error');
+            }
+        }
+    });
+
+    document.getElementById('asist-csv-input')?.addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        Papa.parse(file, {
+            header: true, skipEmptyLines: true,
+            complete: function (results) {
+                const rows = results.data;
+                let added = 0;
+                rows.forEach(row => {
+                    const keys = Object.keys(row);
+                    const getVal = (keywords) => {
+                        const key = keys.find(k => keywords.some(kw => k.toLowerCase().includes(kw)));
+                        return key ? row[key].trim() : '';
+                    };
+                    const dni = getVal(['dni', 'documento']).replace(/\D/g, '').substring(0, 8);
+                    let apellidos = getVal(['apellidos']).trim();
+                    let nombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
+                    if (!apellidos && nombres.includes(',')) {
+                        const parts = nombres.split(',');
+                        apellidos = parts[0].trim(); nombres = parts[1].trim();
+                    }
+                    const correo = getVal(['correo', 'email']).trim();
+                    const telefono = getVal(['teléfono', 'celular']).replace(/\s+/g, '');
+                    if (apellidos || nombres || correo || dni) {
+                        asistParticipants.push({ evento_id: currentComEventId, dni: dni, nombres: nombres, apellidos: apellidos, correo: correo, telefono: telefono, asistencia: true });
+                        added++;
+                    }
+                });
+                if (added > 0) { renderAsistTable(); Swal.fire('Importado', `Se añadieron ${added} asistentes.`, 'success'); }
+                e.target.value = '';
+            }
+        });
+    });
+
+    document.getElementById('btn-asist-export-csv')?.addEventListener('click', async function () {
+        if (!currentComEventId || asistParticipants.length === 0) { Swal.fire('Atención', 'No hay datos para exportar', 'warning'); return; }
+        const { value: etiqueta } = await Swal.fire({ title: 'Etiqueta para contactos', input: 'text', inputValue: 'asistentes', showCancelButton: true });
+        if (!etiqueta) return;
+        let csvContent = "First Name,Middle Name,Last Name,Phone 1 - Value\r\n";
+        asistParticipants.forEach(p => {
+            const firstName = `${etiqueta}_${p.nombres || ''}`.trim();
+            const lastName = (p.apellidos || '').trim();
+            const phone = p.telefono || '';
+            csvContent += `"${firstName}",,"${lastName}","${phone}"\r\n`;
+        });
+        const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${etiqueta}_asistentes.csv`;
+        link.click();
+    });
+
     // Export CSV Contacts
+    document.getElementById('btn-com-load-native')?.addEventListener('click', async function () {
+        const evId = document.getElementById('comunicacion-event-selector').value;
+        if (!evId) {
+            Swal.fire('Atención', 'Selecciona primero un evento', 'warning');
+            return;
+        }
+
+        Swal.fire({ title: 'Cargando registros desde la Web...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+        try {
+            const { data, error } = await window.supabaseClient
+                .from('participantes')
+                .select('*')
+                .eq('evento_id', evId);
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                Swal.fire('Sin registros', 'Aún no hay participantes inscritos mediante el formulario en la página web para este evento.', 'info');
+                return;
+            }
+
+            // Map keys
+            comParticipants = data.map(dbRow => {
+                return {
+                    id: dbRow.id,
+                    dni: dbRow.dni,
+                    nombres: dbRow.nombres,
+                    apellidos: dbRow.apellidos,
+                    correo: dbRow.correo,
+                    telefono: dbRow.telefono || '',
+                    asistencia: !!dbRow.asistencia,
+                    v_isValid: true,
+                    v_errors: {}
+                };
+            });
+
+            renderComTable();
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${comParticipants.length} inscritos cargados de la web`, showConfirmButton: false, timer: 3000 });
+        } catch (err) {
+            console.error(err);
+            Swal.fire('Error', 'No se pudieron cargar los registros: ' + err.message, 'error');
+        }
+    });
+
     document.getElementById('btn-com-export-csv')?.addEventListener('click', async function () {
         if (!currentComEventId || comParticipants.length === 0) {
             Swal.fire('Atención', 'No hay datos para exportar', 'warning');
@@ -5668,19 +6280,37 @@ $(document).ready(function () {
             Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
             try {
                 // To avoid sending rows with no names at all
-                const toSave = comParticipants.filter(p => (p.nombres || p.apellidos || p.dni));
+                const filtered = comParticipants.filter(p => (p.nombres || p.apellidos || p.dni));
 
-                // Limpiar campos nulos que rompen Supabase (o dejarlos)
-                toSave.forEach(p => {
-                    if (!p.id) delete p.id; // ensure UUID is generated by Supabase if missing
+                // Deduplicación por DNI antes de enviar a Supabase (mismo evento)
+                const uniqueData = new Map();
+                filtered.forEach(p => {
+                    // Si no tiene DNI, usamos un fallback temporal para permitir el guardado si el usuario así lo desea
+                    // Pero idealmente el DNI es la clave de conflicto
+                    const key = p.dni || `no-dni-${Math.random()}`;
+                    uniqueData.set(key, {
+                        ...p,
+                        evento_id: parseInt(currentComEventId),
+                        asistencia: p.asistencia || false
+                    });
                 });
+
+                const toSave = Array.from(uniqueData.values()).map(p => {
+                    if (!p.id) delete p.id;
+                    return p;
+                });
+
+                if (toSave.length === 0) {
+                    Swal.fire('Aviso', 'No hay datos válidos para guardar.', 'info');
+                    return;
+                }
 
                 const { error } = await window.supabaseClient
                     .from('participantes')
-                    .upsert(toSave, { onConflict: 'id', ignoreDuplicates: false });
+                    .upsert(toSave, { onConflict: 'dni, evento_id', ignoreDuplicates: false });
 
                 if (error) throw error;
-                Swal.fire('Guardado', 'Datos sincronizados correctamente con Supabase.', 'success');
+                Swal.fire('Guardado', `Datos sincronizados correctamente. Se procesaron ${toSave.length} registros únicos.`, 'success');
                 loadComParticipants();
             } catch (err) {
                 console.error(err);
@@ -5727,22 +6357,35 @@ $(document).ready(function () {
                         return key ? row[key].trim() : '';
                     };
 
-                    const dni = getVal(['dni', 'documento', 'identidad']);
-                    const apellidos = getVal(['apellidos']);
-                    // Some forms use 'nombres y apellidos' -> fallback array ordering matters
-                    const nombres = getVal(['nombres', 'nombre']) || getVal(['nombres y apellidos']);
-                    const correo = getVal(['correo', 'email']);
-                    const telefono = getVal(['teléfono', 'celular', 'phone', 'telef']);
+                    const dni = getVal(['dni', 'documento', 'identidad']).replace(/\D/g, '').substring(0, 8);
+                    let apellidos = getVal(['apellidos']).trim();
+                    let nombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
+
+                    // If apellidos is empty but nombres looks like a combined name (e.g., "Perez, Juan" or "Perez Juan")
+                    if (!apellidos && nombres) {
+                        if (nombres.includes(',')) {
+                            const parts = nombres.split(',');
+                            apellidos = parts[0].trim();
+                            nombres = parts[1].trim();
+                        } else if (nombres.includes(' ')) {
+                            // Simple heuristic: last word(s) are names, first word(s) are surnames? 
+                            // Or just put everything in nomes for the user to fix manually if unsure.
+                            // But usually it's "APELLIDOS NOMBRES"
+                        }
+                    }
+
+                    const correo = getVal(['correo', 'email']).trim();
+                    const telefono = getVal(['teléfono', 'celular', 'phone', 'telef']).replace(/\s+/g, '');
 
                     if (apellidos || nombres || correo || dni) {
                         comParticipants.push({
                             evento_id: currentComEventId,
-                            dni: dni.substring(0, 15),
+                            dni: dni,
                             nombres: nombres,
                             apellidos: apellidos,
                             correo: correo,
                             telefono: telefono,
-                            asistencia: true
+                            asistencia: false // Por defecto no han asistido aún
                         });
                         added++;
                     }
@@ -5813,4 +6456,127 @@ function closeParticipantReviewModal() {
     }
 }
 window.closeParticipantReviewModal = closeParticipantReviewModal;
+
+// --- FINAL EVENT REPORT PACKAGING (ZIP) ---
+window.downloadFinalEventReport = async function(eventData, inscritos, asistentes) {
+    const zip = new JSZip();
+    const folderName = `Reporte_${eventData.nombre.replace(/[^a-z0-9]/gi, '_').substring(0, 30)}_${eventData.id}`;
+    const folder = zip.folder(folderName);
+
+    // 1. CSV - Inscritos
+    const csvInscritos = convertToCSV(inscritos);
+    folder.file("inscritos.csv", csvInscritos);
+
+    // 2. CSV - Asistentes
+    const csvAsistentes = convertToCSV(asistentes);
+    folder.file("asistentes.csv", csvAsistentes);
+
+    // 3. Foto del Ponente (si existe)
+    let reqData = {};
+    try {
+        reqData = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
+    } catch(e){}
+
+    if (reqData.cargar_foto && typeof reqData.cargar_foto === 'string' && reqData.cargar_foto.startsWith('data:image')) {
+        const base64Data = reqData.cargar_foto.split(',')[1];
+        folder.file("foto_ponente.jpg", base64Data, {base64: true});
+    }
+
+    // 4. Reporte PDF de Métricas
+    const pdfReport = await generateEventReportPDF(eventData, inscritos, asistentes);
+    const pdfBlob = pdfReport.output('blob');
+    folder.file("reporte_metrias_evento.pdf", pdfBlob);
+
+    // 5. Generar y descargar ZIP
+    zip.generateAsync({type:"blob"}).then(function(content) {
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = `${folderName}.zip`;
+        link.click();
+    });
+};
+
+function convertToCSV(data) {
+    if (!data || !data.length) return "";
+    const headers = Object.keys(data[0]).join(",");
+    const rows = data.map(obj => Object.values(obj).map(val => `"${val}"`).join(","));
+    return [headers, ...rows].join("\n");
+}
+
+async function generateEventReportPDF(event, inscritos, asistentes) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFillColor(0, 45, 92);
+    doc.rect(0, 0, 210, 40, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.text("REPORTE FINAL DE EVENTO", 105, 25, { align: 'center' });
+
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text(event.nombre.toUpperCase(), 20, 55);
+    
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`ID Evento: ${event.id}`, 20, 65);
+    doc.text(`Tipo: ${event.tipo} | Modalidad: ${event.modalidad}`, 20, 72);
+    doc.text(`Ponente: ${event.ponente}`, 20, 79);
+
+    // Metrics Box
+    doc.setDrawColor(226, 232, 240);
+    doc.setFillColor(248, 250, 252);
+    doc.roundedRect(20, 90, 170, 50, 3, 3, 'FD');
+
+    const totalInscritos = inscritos.length;
+    const totalAsistentes = asistentes.length;
+    const porcentaje = totalInscritos > 0 ? Math.round((totalAsistentes / totalInscritos) * 100) : 0;
+
+    doc.setFontSize(14);
+    doc.text("MÉTRICAS DE PARTICIPACIÓN", 105, 105, { align: 'center' });
+    
+    doc.setFontSize(11);
+    doc.text(`Total Inscritos: ${totalInscritos}`, 40, 120);
+    doc.text(`Total Asistentes: ${totalAsistentes}`, 40, 130);
+    
+    doc.setFontSize(24);
+    doc.setTextColor(16, 185, 129); // Verde
+    doc.text(`${porcentaje}%`, 150, 125, { align: 'center' });
+    doc.setFontSize(10);
+    doc.text("Asistencia", 150, 135, { align: 'center' });
+
+    // Details logic
+    doc.setTextColor(30, 41, 59);
+    doc.setFontSize(12);
+    doc.text("Resumen de Evaluación:", 20, 160);
+    
+    const califPromedio = asistentes.length > 0 
+        ? (asistentes.reduce((acc, curr) => acc + (curr.calificacion || 0), 0) / asistentes.length).toFixed(1)
+        : 0;
+        
+    doc.setFontSize(11);
+    doc.text(`Calificación Promedio: ${califPromedio} / 5`, 30, 170);
+    
+    // Comments
+    const comentarios = asistentes.filter(a => a.comentario && a.comentario.trim() !== "").slice(0, 5);
+    if (comentarios.length > 0) {
+        doc.text("Algunos comentarios:", 20, 190);
+        let y = 200;
+        comentarios.forEach(c => {
+            const lines = doc.splitTextToSize(`- ${c.comentario}`, 160);
+            doc.text(lines, 30, y);
+            y += lines.length * 6 + 2;
+        });
+    }
+
+    // Footer
+    doc.setTextColor(148, 163, 184);
+    doc.setFontSize(9);
+    doc.text(`Generado automáticamente el ${new Date().toLocaleString()}`, 105, 285, { align: 'center' });
+
+    return doc;
+}
+
 

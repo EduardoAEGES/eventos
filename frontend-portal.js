@@ -16,6 +16,30 @@ document.addEventListener('DOMContentLoaded', () => {
     const certGrid = document.getElementById('cert-grid');
     const studentNameTitle = document.getElementById('student-name');
 
+    function wrapTextCanvas(ctx, text, x, y, maxWidth, lineHeight) {
+        const words = text.split(' ');
+        let line = '';
+        const lines = [];
+
+        for (let n = 0; n < words.length; n++) {
+            const testLine = line + words[n] + ' ';
+            const metrics = ctx.measureText(testLine);
+            const testWidth = metrics.width;
+            if (testWidth > maxWidth && n > 0) {
+                lines.push(line.trim());
+                line = words[n] + ' ';
+            } else {
+                line = testLine;
+            }
+        }
+        lines.push(line.trim());
+
+        for (let k = 0; k < lines.length; k++) {
+            ctx.fillText(lines[k], x, y + (k * lineHeight));
+        }
+        return lines.length;
+    }
+
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
 
@@ -48,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Query Supabase
             // We need to join the 'eventos' table to get the event name and details
             const { data, error } = await supabasePortal
-                .from('participantes')
+                .from('asistencias')
                 .select(`
                     id, 
                     dni,
@@ -101,7 +125,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.className = 'cert-card';
                 card.innerHTML = `
                     <div class="cert-type">${ev.tipo || 'Evento Académico'}</div>
-                    <div class="cert-event">${ev.nombre}</div>
+                    <div class="cert-event">${ev.nombre.length > 50 ? ev.nombre.substring(0, 47) + '...' : ev.nombre}</div>
                     <div class="cert-meta">
                         <span><i class="ph ph-calendar-blank"></i> ${dateStr}</span>
                         <span><i class="ph ph-map-pin"></i> ${ev.modalidad || 'N/A'}</span>
@@ -139,35 +163,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    async function createCertificatePDF(item) {
+    async function createCertificatePDF(item, canvas) {
         const { jsPDF } = window.jspdf;
         const ev = item.eventos;
-
-        // 1. Preparar fechas
-        let inicioStr = "";
-        let lastDateObj = new Date();
-        try {
-            const horarios = JSON.parse(ev.horario || '[]');
-            if (horarios.length > 0) {
-                horarios.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
-                const first = new Date(horarios[0].fecha + "T00:00:00");
-                const last = new Date(horarios[horarios.length - 1].fecha + "T00:00:00");
-                lastDateObj = last;
-                const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-                if (horarios.length === 1 || first.getTime() === last.getTime()) {
-                    inicioStr = `${first.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
-                } else if (first.getMonth() === last.getMonth()) {
-                    inicioStr = `${first.getDate()} al ${last.getDate()} de ${months[first.getMonth()]} de ${first.getFullYear()}`;
-                } else {
-                    inicioStr = `${first.getDate()} de ${months[first.getMonth()]} al ${last.getDate()} de ${months[last.getMonth()]} de ${first.getFullYear()}`;
-                }
-            }
-        } catch (e) { }
-
-        const firmaDate = new Date(lastDateObj);
-        firmaDate.setDate(firmaDate.getDate() + 1);
-        const months = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-        const firmaStr = `${firmaDate.getDate()} de ${months[firmaDate.getMonth()]} de ${firmaDate.getFullYear()}`;
 
         const pdf = new jsPDF({
             orientation: 'landscape',
@@ -175,90 +173,35 @@ document.addEventListener('DOMContentLoaded', () => {
             format: [1123, 794]
         });
 
+        if (canvas) {
+            const imgData = canvas.toDataURL('image/png', 1.0);
+            pdf.addImage(imgData, 'PNG', 0, 0, 1123, 794, undefined, 'FAST');
+            return pdf;
+        }
+
+        // Fallback (older manual logic if no canvas provided, though we will aim to always provide one)
+        // [Existing manual drawing logic can remain here as fallback or be simplified]
         return new Promise((resolve) => {
             const img = new Image();
             img.src = 'constancia_base.png';
             img.onload = () => {
-                // 1. "CONSTANCIA"
-                pdf.setFont("times", "bold");
-                pdf.setFontSize(54);
-                pdf.setTextColor(0, 45, 92); // #002d5c
-                pdf.text("CONSTANCIA", 561, 190, { align: 'center' });
-
-                // 2. "otorgada a:"
-                pdf.setFont("times", "italic");
-                pdf.setFontSize(22);
-                pdf.setTextColor(51, 65, 85);
-                pdf.text("otorgada a:", 561, 240, { align: 'center' });
-
-                // 3. Apellidos y Nombres - Scaling logic for PDF
-                const fullName = `${(item.apellidos || '').toUpperCase()} ${(item.nombres || '').toUpperCase()}`.trim();
-                let nameFontSize = 40;
-                const maxNameWidth = 800; // px
-                pdf.setFont("helvetica", "bold");
-                let currentWidth = pdf.getTextWidth(fullName);
-
-                if (currentWidth > maxNameWidth) {
-                    nameFontSize = Math.floor(nameFontSize * (maxNameWidth / currentWidth));
-                }
-
-                pdf.setFontSize(nameFontSize);
-                pdf.setTextColor(0, 45, 92);
-                pdf.text(fullName, 561, 310, { align: 'center' });
-
-                // 4. Gradient-like Decorative Line below name (simulated in PDF with multiple lines or solid color)
-                pdf.setDrawColor(0, 45, 92);
-                pdf.setLineWidth(1.5);
-                pdf.line(200, 335, 923, 335); // Longer line
-                pdf.setDrawColor(0, 45, 92, 0.4);
-                pdf.setLineWidth(0.5);
-                pdf.line(150, 338, 973, 338); // Even longer secondary thin line
-
-                // 5. Description
-                const type = (ev.tipo || 'webinar').toLowerCase();
-                let article = 'el';
-                if (type.includes('apertura') || type.includes('reunión') || type.includes('clase') || type.includes('sesión')) article = 'la';
-
-                pdf.setFont("helvetica", "normal");
-                pdf.setFontSize(20);
-                pdf.setTextColor(51, 65, 85);
-                pdf.text(`Por participar en ${article} ${type}`, 561, 400, { align: 'center' });
-
-                pdf.setFont("helvetica", "bold");
-                pdf.setFontSize(28);
-                pdf.setTextColor(0, 45, 92);
-                pdf.text((ev.nombre || '').toUpperCase(), 561, 440, { align: 'center' });
-
-                pdf.setFont("helvetica", "normal");
-                pdf.setFontSize(16);
-                pdf.setTextColor(51, 65, 85);
-                pdf.text(`organizado por la Dirección Académica de la Escuela de Educación Superior`, 561, 485, { align: 'center' });
-                pdf.text(`CERTUS, que se realizó el ${inicioStr}.`, 561, 510, { align: 'center' });
-
-                // 6. Fecha de firma
-                pdf.setFont("times", "normal");
-                pdf.setFontSize(18);
-                pdf.setTextColor(71, 85, 105);
-                pdf.text(`Lima, ${firmaStr}`, 561, 580, { align: 'center' });
-
-                // 7. Folio
-                pdf.setFont("helvetica", "normal");
-                pdf.setFontSize(10);
-                pdf.setTextColor(148, 163, 184);
-                const typePrefixes = { 'Webinar': 'WBN', 'Taller': 'TLR', 'Apertura Académica': 'APR', 'Curso': 'CUR' };
-                const prefix = typePrefixes[ev.tipo] || 'EVT';
-                const regCode = `Folio N°: ${prefix}-${String(ev.id).padStart(4, '0')}-${item.dni || '00000000'}`;
-                pdf.text(regCode, 45, 765);
-
+                pdf.addImage(img, 'PNG', 0, 0, 1123, 794);
+                // ... (simplified or kept as is)
+                // To guarantee identity, we prefer the canvas approach.
+                // Let's call renderToImage internally if needed or just use the canvas.
                 resolve(pdf);
             };
         });
     }
 
     async function generateAndDownloadLocal(item) {
-        const pdf = await createCertificatePDF(item);
-        pdf.save(`Constancia_${item.dni}.pdf`);
+        const canvas = document.getElementById('cert-canvas');
+        await renderCertificateToImage(item); 
+        const pdf = await createCertificatePDF(item, canvas);
+        const eventId = new URLSearchParams(window.location.search).get('id') || '000';
+        pdf.save(`Constancia_${item.dni}_${eventId.padStart(3, '0')}.pdf`);
     }
+
 
     async function renderCertificateToImage(item) {
         const canvas = document.getElementById('cert-canvas');
@@ -306,28 +249,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.font = '800 68px Cinzel, serif';
-                ctx.fillText("CONSTANCIA", 561, 190);
+                ctx.fillText("CONSTANCIA", 561, 150);
 
                 // 2. "otorgada a:" - Libre Baskerville itálica
-                ctx.font = 'italic 24px "Libre Baskerville", serif';
+                ctx.font = 'italic 20px "Libre Baskerville", serif';
                 ctx.fillStyle = '#334155';
-                ctx.fillText("otorgada a:", 561, 245);
+                ctx.fillText("otorgada a:", 561, 195);
 
                 // 3. Apellidos y Nombres - Playfair Display Bold with scaling
                 const fullName = `${(item.apellidos || '').toUpperCase()} ${(item.nombres || '').toUpperCase()}`.trim();
-                let baseFontSize = 52;
-                ctx.font = `bold ${baseFontSize}px "Playfair Display", serif`;
-
-                // Dynamic scaling
-                const maxWidth = 850;
-                let textWidth = ctx.measureText(fullName).width;
-                if (textWidth > maxWidth) {
-                    const newSize = Math.floor(baseFontSize * (maxWidth / textWidth));
-                    ctx.font = `bold ${newSize}px "Playfair Display", serif`;
-                }
-
+                ctx.font = '800 32px "Outfit", sans-serif'; 
                 ctx.fillStyle = '#002d5c';
-                ctx.fillText(fullName, 561, 320);
+                ctx.fillText(fullName, 561, 260);
 
                 // 3.5 Línea decorativa con Graduado (Efecto degradado en los extremos)
                 const gradient = ctx.createLinearGradient(150, 0, 973, 0);
@@ -337,17 +270,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 gradient.addColorStop(1, 'rgba(0, 45, 92, 0)');
 
                 ctx.strokeStyle = gradient;
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 1.5;
                 ctx.beginPath();
-                ctx.moveTo(150, 355);
-                ctx.lineTo(973, 355);
+                ctx.moveTo(200, 290);
+                ctx.lineTo(923, 290);
                 ctx.stroke();
 
                 // Línea ultra-fina secundaria para elegancia
-                ctx.lineWidth = 0.5;
+                ctx.lineWidth = 0.4;
                 ctx.beginPath();
-                ctx.moveTo(100, 360);
-                ctx.lineTo(1023, 360);
+                ctx.moveTo(150, 295);
+                ctx.lineTo(973, 295);
                 ctx.stroke();
 
                 // 4. "Por participar en..." - Outfit Clean
@@ -358,23 +291,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 let article = 'el';
                 if (type.includes('apertura') || type.includes('reunión') || type.includes('clase') || type.includes('sesión')) article = 'la';
 
-                ctx.fillText(`Por participar en ${article} ${type}`, 561, 415);
+                ctx.font = '400 20px Outfit, sans-serif';
+                ctx.fillText(`Por participar en ${article} ${type}`, 561, 335);
 
-                // 5. Nombre del Evento - Outfit Bold
-                ctx.font = 'bold 36px Outfit, sans-serif';
+                // 5. Nombre del Evento - Outfit Bold con multilínea
+                ctx.font = 'bold 28px Outfit, sans-serif'; // Reducido de 36 a 28
                 ctx.fillStyle = '#002d5c';
-                ctx.fillText((ev.nombre || '').toUpperCase(), 561, 460);
+                const eventTitle = (ev.nombre || '').toUpperCase();
+                const maxTitleWidth = 850;
+                
+                const lineCount = wrapTextCanvas(ctx, eventTitle, 561, 375, maxTitleWidth, 32); // leading reducido de 40 a 32
+                const titleExtraHeight = (lineCount - 1) * 32;
 
                 // 6. Texto legal - Outfit
-                ctx.font = '18px Outfit, sans-serif';
+                ctx.font = '16px Outfit, sans-serif'; // Reducido de 18 a 16
                 ctx.fillStyle = '#334155';
-                ctx.fillText(`organizado por la Dirección Académica de la Escuela de Educación Superior`, 561, 515);
-                ctx.fillText(`CERTUS, que se realizó el ${inicioStr}.`, 561, 540);
+                ctx.fillText(`organizado por la Dirección Académica de la Escuela de Educación Superior`, 561, 420 + titleExtraHeight);
+                ctx.fillText(`CERTUS, que se realizó el ${inicioStr}.`, 561, 442 + titleExtraHeight);
 
                 // 7. Fecha de firma - Libre Baskerville
-                ctx.font = 'italic 18px "Libre Baskerville", serif';
+                ctx.font = 'italic 16px "Libre Baskerville", serif'; // Reducido de 18 a 16
                 ctx.fillStyle = '#475569';
-                ctx.fillText(`Lima, ${firmaStr}`, 561, 600);
+                ctx.fillText(`Lima, ${firmaStr}`, 561, 495 + titleExtraHeight);
 
                 // 8. Folio - Mono/Roboto
                 ctx.font = '11px "Inter", sans-serif';
@@ -383,6 +321,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const typePrefixes = { 'Webinar': 'WBN', 'Taller': 'TLR', 'Apertura Académica': 'APR', 'Curso': 'CUR' };
                 const prefix = typePrefixes[ev.tipo] || 'EVT';
                 const regCode = `Folio N°: ${prefix}-${String(ev.id).padStart(4, '0')}-${item.dni || '00000000'}`;
+                ctx.textAlign = 'left'; 
                 ctx.fillText(regCode, 45, 765);
 
                 previewImg.src = canvas.toDataURL('image/png');

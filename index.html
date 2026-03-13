@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@500;600;700&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@500;600;700&family=Cinzel:wght@700;800&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Playfair+Display:wght@700;800&display=swap"
         rel="stylesheet">
 
     <!-- Iconos (Phosphor Icons - CDN ligero y moderno) -->
@@ -28,6 +28,7 @@
     <!-- PDF Generation Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <!-- jQuery y Select2 para Autocompletado Búsqueda en Selects -->
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -129,12 +130,12 @@
                         <select id="calendar-sede-filter" class="input-modern small">
                             <option value="all">Todas las Sedes</option>
                             <option value="Todas">Todas (Virtual/General)</option>
-                            <option value="AQP">Arequipa (AQP)</option>
-                            <option value="PRC">Surco (PRC)</option>
-                            <option value="NOR">Lima Norte (NOR)</option>
-                            <option value="ATE">Ate (ATE)</option>
-                            <option value="SJL">San Juan de Lurigancho (SJL)</option>
-                            <option value="VES">Villa el Salvador (VES)</option>
+                            <option value="AREQUIPA">AREQUIPA</option>
+                            <option value="SURCO">SURCO</option>
+                            <option value="LIMA NORTE">LIMA NORTE</option>
+                            <option value="ATE">ATE</option>
+                            <option value="SAN JUAN DE LURIGANCHO">SAN JUAN DE LURIGANCHO</option>
+                            <option value="VILLA EL SALVADOR">VILLA EL SALVADOR</option>
                         </select>
                     </div>
                 </div>
@@ -243,13 +244,16 @@
                         <h3><i class="ph ph-users"></i> 2. Base de Datos de Participantes</h3>
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
                             <input type="file" id="com-csv-input" accept=".csv" style="display: none;">
+                            <button id="btn-com-load-native" class="btn-primary small"
+                                style="background:var(--primary-color)"><i class="ph ph-cloud-arrow-down"></i> Cargar
+                                Inscritos Web</button>
                             <button id="btn-com-import-csv" class="btn-secondary small"
                                 onclick="document.getElementById('com-csv-input').click()"><i
                                     class="ph ph-upload-simple"></i> Importar CSV</button>
                             <button id="btn-com-export-csv" class="btn-secondary small"><i
-                                    class="ph ph-download-simple"></i> Exportar a CSV (Contactos Google)</button>
-                            <button id="btn-com-add-row" class="btn-primary small"><i class="ph ph-plus"></i> Añadir
-                                Fila Manual</button>
+                                    class="ph ph-download-simple"></i> Exportar a CSV</button>
+                            <button id="btn-com-add-row" class="btn-secondary small"><i class="ph ph-plus"></i>
+                                Manual</button>
                         </div>
                     </div>
 
@@ -270,6 +274,7 @@
                                     <th>Nombres</th>
                                     <th>Correo Electrónico</th>
                                     <th width="120">Teléfono</th>
+                                    <th width="100">Estado</th>
                                     <th width="60">Acciones</th>
                                 </tr>
                             </thead>
@@ -294,10 +299,73 @@
                             </button>
                             <button id="btn-com-save-db" class="btn-primary"
                                 style="background: #10b981; border-color: #059669;">
-                                <i class="ph ph-floppy-disk"></i> Guardar Cambios en Supabase
+                                <i class="ph ph-floppy-disk"></i> Guardar datos en evento
                             </button>
                         </div>
                     </div>
+                <!-- 2.1 Base de Datos de Asistentes -->
+                <div class="card" style="margin-bottom: 2rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 1rem;">
+                        <h3><i class="ph ph-check-square"></i> 2.1 Base de Datos de Asistentes (Los que marcaron asistencia)</h3>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <input type="file" id="asist-csv-input" accept=".csv" style="display: none;">
+                            <button id="btn-asist-load-native" class="btn-primary small"
+                                style="background:var(--primary-color)"><i class="ph ph-cloud-arrow-down"></i> Cargar
+                                Asistentes Web</button>
+                            <button id="btn-asist-import-csv" class="btn-secondary small"
+                                onclick="document.getElementById('asist-csv-input').click()"><i
+                                    class="ph ph-upload-simple"></i> Importar CSV</button>
+                            <button id="btn-asist-export-csv" class="btn-secondary small"><i
+                                    class="ph ph-download-simple"></i> Exportar a CSV</button>
+                            <button id="btn-asist-add-row" class="btn-secondary small"><i class="ph ph-plus"></i>
+                                Manual</button>
+                        </div>
+                    </div>
+                    <p style="color:var(--text-muted); margin-bottom:1rem; font-size:0.9rem;">
+                        Esta tabla permite gestionar a quienes <b>registraron su asistencia</b>. Puedes corregir datos o añadir registros manualmente.
+                    </p>
+                    <div
+                        style="overflow-x: auto; max-height: 400px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+                        <table class="data-table" id="asist-participants-table" style="min-width: 900px;">
+                            <thead style="position: sticky; top: 0; background: var(--bg-color); z-index: 10;">
+                                <tr>
+                                    <th width="50" style="text-align: center;"><input type="checkbox"
+                                            id="asist-select-all" title="Seleccionar Todos"></th>
+                                    <th width="100">DNI</th>
+                                    <th>Apellidos</th>
+                                    <th>Nombres</th>
+                                    <th>Correo Electrónico</th>
+                                    <th width="120">Teléfono</th>
+                                    <th width="100">Estado</th>
+                                    <th width="60">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="asist-participants-tbody">
+                                <tr>
+                                    <td colspan="8" style="text-align:center; padding: 2rem; color: var(--text-muted);">
+                                        Selecciona un evento para cargar los asistentes.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div
+                        style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                        <span id="asist-table-status" style="color: var(--text-muted); font-size: 0.9rem;">Esperando
+                            selección de evento...</span>
+                        <div style="display: flex; gap: 0.5rem;">
+                            <button id="btn-asist-delete-selected" class="btn-secondary"
+                                style="border-color: rgba(248, 113, 113, 0.5); color: #f87171;">
+                                <i class="ph ph-trash"></i> Eliminar Selección
+                            </button>
+                            <button id="btn-asist-save-db" class="btn-primary"
+                                style="background: #10b981; border-color: #059669;">
+                                <i class="ph ph-floppy-disk"></i> Guardar datos en evento
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 </div>
 
                 <!-- 3. Mensajería y Plantillas -->
@@ -550,6 +618,11 @@
                                 <option value="new_ponente" style="font-weight:bold; color:var(--primary-color);">+
                                     Agregar nuevo ponente...</option>
                             </select>
+                            <button type="button" id="btn-edit-ponente" class="btn-icon-edit"
+                                title="Editar ponente seleccionado"
+                                style="padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(59, 130, 246, 0.3); background: rgba(59, 130, 246, 0.1); color: #60a5fa; display: none;">
+                                <i class="ph ph-pencil"></i>
+                            </button>
                             <button type="button" id="btn-delete-ponente" class="btn-icon-remove"
                                 title="Eliminar ponente seleccionado"
                                 style="padding: 0.6rem; border-radius: 6px; border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.1); color: #f87171; display: none;">
@@ -619,18 +692,17 @@
                         <div class="checkbox-grid">
                             <label class="checkbox-option"><input type="checkbox" name="sede" value="Todas">
                                 Todas</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="AQP"> Arequipa
-                                (AQP)</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="PRC"> Surco
-                                (PRC)</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="NOR"> Lima Norte
-                                (NOR)</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="ATE"> Ate
-                                (ATE)</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="SJL"> San Juan de
-                                Lurigancho (SJL)</label>
-                            <label class="checkbox-option"><input type="checkbox" name="sede" value="VES"> Villa el
-                                Salvador (VES)</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="AREQUIPA">
+                                AREQUIPA</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="SURCO">
+                                SURCO</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="LIMA NORTE"> LIMA
+                                NORTE</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="ATE"> ATE</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede"
+                                    value="SAN JUAN DE LURIGANCHO"> SAN JUAN DE LURIGANCHO</label>
+                            <label class="checkbox-option"><input type="checkbox" name="sede" value="VILLA EL SALVADOR">
+                                VILLA EL SALVADOR</label>
                         </div>
                     </div>
 
@@ -893,8 +965,6 @@
                                 <th>Apellidos</th>
                                 <th>Correo</th>
                                 <th>Celular</th>
-                                <th>Categoría</th>
-                                <th>Asistió</th>
                                 <th>Estado</th>
                                 <th width="40"></th>
                             </tr>
@@ -941,44 +1011,90 @@
                 <div
                     style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05);">
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('rem-draft-to', 'Para')"
+                                title="Copiar Para">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="rem-draft-to"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('rem-draft-cc', 'CC')"
+                                title="Copiar CC">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="rem-draft-cc"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
-                            (Destinatarios):</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
+                                (Destinatarios):</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('rem-draft-cco', 'CCO')"
+                                title="Copiar CCO">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <textarea id="rem-draft-cco"
                             placeholder="Haz clic en 'Revisar Inscritos' y luego en 'Agregar Destinatarios'"
                             style="width: 100%; height: 80px; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px; font-size: 0.85rem; resize: none;"></textarea>
                     </div>
                     <div style="margin-bottom: 0;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('rem-draft-subject', 'Asunto')"
+                                title="Copiar Asunto">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="rem-draft-subject"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                 </div>
                 <div style="text-align: left;">
-                    <label
-                        style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; display: block;">Cuerpo
-                        del mensaje:</label>
-                    <textarea id="rem-draft-text"
-                        style="width: 100%; height: 200px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none;"></textarea>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Cuerpo
+                            del mensaje:</label>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btn-add-optional-link" class="btn-secondary"
+                                style="display: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: #cbd5e1;"
+                                title="Agregar enlace de reunión">
+                                <i class="ph ph-link"></i> Agregar Enlace
+                            </button>
+                            <button id="btn-edit-optional-link" class="btn-secondary"
+                                style="display: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid #475569; background: #1e293b; color: #cbd5e1;"
+                                title="Editar enlace virtual">
+                                <i class="ph ph-pencil-simple"></i>
+                            </button>
+                            <button id="btn-del-optional-link" class="btn-secondary"
+                                style="display: none; padding: 4px 8px; font-size: 0.75rem; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.4); background: #1e293b; color: #ef4444;"
+                                title="Quitar enlace virtual">
+                                <i class="ph ph-trash"></i>
+                            </button>
+                            <button class="copy-field-btn" onclick="copyToClipboardHtml('rem-draft-text', 'Cuerpo')"
+                                title="Copiar Cuerpo">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="rem-draft-text" contenteditable="true"
+                        style="width: 100%; height: 250px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; overflow-y: auto; outline: none;">
+                    </div>
                 </div>
             </div>
             <div class="modal-footer" style="padding-top: 1rem;">
-                <button onclick="copyReminderDraft()" class="btn-primary">
-                    <i class="ph ph-copy"></i> Copiar Todo
-                </button>
                 <button id="btn-open-review-from-draft" class="btn-secondary"
                     style="color: white; background: #10b981; border: none;">
                     <i class="ph ph-users"></i> Revisar Inscritos (Sync)
@@ -999,44 +1115,72 @@
                 <div
                     style="text-align: left; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.05);">
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Para:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('cert-draft-to', 'Para')"
+                                title="Copiar Para">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="cert-draft-to"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CC:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('cert-draft-cc', 'CC')"
+                                title="Copiar CC">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="cert-draft-cc"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                     <div style="margin-bottom: 10px;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
-                            (Destinatarios de Constancias):</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">CCO
+                                (Destinatarios de Constancias):</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('cert-draft-cco', 'CCO')"
+                                title="Copiar CCO">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <textarea id="cert-draft-cco"
                             placeholder="Haz clic en 'Revisar Inscritos' y luego en 'Agregar Destinatarios'"
                             style="width: 100%; height: 80px; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px; font-size: 0.85rem; resize: none;"></textarea>
                     </div>
                     <div style="margin-bottom: 0;">
-                        <label
-                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label
+                                style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Asunto:</label>
+                            <button class="copy-field-btn" onclick="copyToClipboard('cert-draft-subject', 'Asunto')"
+                                title="Copiar Asunto">
+                                <i class="ph ph-copy"></i>
+                            </button>
+                        </div>
                         <input type="text" id="cert-draft-subject"
                             style="width: 100%; padding: 8px 10px; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: white; display: block; margin-top: 4px;">
                     </div>
                 </div>
                 <div style="text-align: left;">
-                    <label
-                        style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; margin-bottom: 5px; display: block;">Cuerpo
-                        del mensaje:</label>
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                        <label
+                            style="color: #94a3b8; font-size: 0.8rem; font-weight: 600; text-transform: uppercase;">Cuerpo
+                            del mensaje:</label>
+                        <button class="copy-field-btn" onclick="copyToClipboard('cert-draft-text', 'Cuerpo')"
+                            title="Copiar Cuerpo">
+                            <i class="ph ph-copy"></i>
+                        </button>
+                    </div>
                     <textarea id="cert-draft-text"
                         style="width: 100%; height: 200px; padding: 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #f8fafc; color: #1e293b; font-size: 0.95rem; resize: none; outline: none;"></textarea>
                 </div>
             </div>
             <div class="modal-footer" style="padding-top: 1rem;">
-                <button onclick="copyCertificatesDraft()" class="btn-primary" style="background: #8b5cf6;">
-                    <i class="ph ph-copy"></i> Copiar Todo
-                </button>
                 <button id="btn-open-review-from-cert" class="btn-secondary"
                     style="color: white; background: #10b981; border: none;">
                     <i class="ph ph-users"></i> Revisar Asistentes (Sync)
@@ -1080,6 +1224,8 @@
     </div>
 
     <script src="script.js?v=2026-v7.1-fix"></script>
+    <!-- Hidden Canvas for high-quality certificate rendering -->
+    <canvas id="cert-canvas-admin" style="display: none;"></canvas>
 </body>
 
 </html>

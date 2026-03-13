@@ -58,7 +58,12 @@ function traducirSedes(sedesStr) {
         "NOR": "Sede Norte",
         "ATE": "Sede Ate",
         "SJL": "Sede SJL",
-        "VES": "Sede Villa"
+        "VES": "Sede Villa",
+        "AREQUIPA": "Sede Arequipa",
+        "SURCO": "Sede Surco",
+        "LIMA NORTE": "Sede Norte",
+        "SAN JUAN DE LURIGANCHO": "Sede SJL",
+        "VILLA EL SALVADOR": "Sede Villa"
     };
     // Soporta múltiples sedes separadas por coma
     return sedesStr.toString().split(",")
