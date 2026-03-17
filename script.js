@@ -57,6 +57,20 @@ function intelligentSplitName(surnames, names) {
     return { apellidos: toTitleCase(s), nombres: toTitleCase(n) };
 }
 
+// Robust date helper for reports (Calcula la fecha real considerando el horario)
+function getReportSafeDate(ev) {
+    let dStr = ev.fecha_inicio;
+    if (!dStr && ev.horario) {
+        try {
+            let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario) : ev.horario;
+            if (Array.isArray(hs) && hs.length > 0 && hs[0].fecha) dStr = hs[0].fecha;
+        } catch(e){}
+    }
+    if (!dStr) dStr = ev.created_at;
+    const d = new Date(dStr);
+    return isNaN(d.getTime()) ? new Date() : d;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // ALERT DEBUG
@@ -798,6 +812,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const sedeFilterVal = calendarSedeFilter ? calendarSedeFilter.value : 'all';
 
         const filteredEvents = events.filter(ev => {
+            const estado = (ev.estado_especial || '').toLowerCase();
+            if (estado === 'cancelado' || estado === 'suspendido') return false;
+
             if (visFilterVal !== 'all') {
                 const isPub = !!ev.is_public;
                 if (visFilterVal === 'publico' && !isPub) return false;
@@ -978,13 +995,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const ponenteText = ev.ponente && ev.ponente.toLowerCase() !== 'pendiente' ? ev.ponente : 'Docente por Asignar';
 
+                const detailColor = isPublic ? '#94a3b8' : 'rgba(0,0,0,0.6)';
+                const titleColor = isPublic ? '#f8fafc' : '#000000';
+
                 block.innerHTML = `
-                    <div style="font-weight: 600; font-size: 0.95rem; color: #f8fafc; line-height: 1.2;">${ev.nombre}</div>
-                    <div style="font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
-                        <i class="ph ph-user"></i> ${ponenteText}
+                    <div style="font-weight: 600; font-size: 0.95rem; color: ${titleColor}; line-height: 1.2;">${ev.nombre}</div>
+                    <div style="font-size: 0.8rem; color: ${detailColor}; display: flex; align-items: center; gap: 4px;">
+                        <i class="ph ph-user" style="color: ${detailColor};"></i> ${ponenteText}
                     </div>
-                    <div style="font-size: 0.8rem; color: #94a3b8; display: flex; align-items: center; gap: 4px;">
-                        <i class="ph ph-clock"></i> ${h.inicio} - ${h.fin}
+                    <div style="font-size: 0.8rem; color: ${detailColor}; display: flex; align-items: center; gap: 4px;">
+                        <i class="ph ph-clock" style="color: ${detailColor};"></i> ${h.inicio} - ${h.fin}
                     </div>
                 `;
 
@@ -1867,6 +1887,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     const porcentajeAsistencia = totalInscritos > 0 ? Math.round((totalAsistentes / totalInscritos) * 100) : 0;
 
                     reqList.innerHTML = `
+                        <div style="margin-bottom: 1.5rem; padding: 1rem; background: rgba(59, 130, 246, 0.05); border-radius: 12px; border-left: 4px solid #3b82f6;">
+                            <div style="font-weight: 700; color: #1e3a8a; margin-bottom: 5px;">${eventData.nombre}</div>
+                            <div style="font-size: 0.85rem; color: #475569;">
+                                <strong>Público Objetivo:</strong> ${eventData.audiencia || 'Público General'}
+                            </div>
+                        </div>
                         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; padding: 1rem 0;">
                             <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); padding: 1.5rem 1rem; border-radius: 12px; text-align: center;">
                                 <div style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em;">Inscritos</div>
@@ -6690,7 +6716,7 @@ $(document).ready(function () {
 
                     <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; pt: 20px; margin-top: 10px;">
                         <div>
-                            <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Dirigido a</div>
+                            <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Público Objetivo</div>
                             <div style="color: #1e293b; font-size: 13px;">${ev.audiencia || 'Público General'}</div>
                         </div>
                         <div style="text-align: right;">
@@ -6744,7 +6770,7 @@ $(document).ready(function () {
         btnOpenReportModal.addEventListener('click', () => {
             // Cargar meses disponibles
             const months = [...new Set(allEventsData.map(ev => {
-                const date = new Date(ev.fecha_inicio || ev.created_at);
+                const date = getReportSafeDate(ev);
                 return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             }))].sort().reverse();
 
@@ -6765,13 +6791,15 @@ $(document).ready(function () {
         const visibility = reportVisibilityFilter.value;
 
         const filtered = allEventsData.filter(ev => {
-            const date = new Date(ev.fecha_inicio || ev.created_at);
+            const date = getReportSafeDate(ev);
             const evMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
             
+            const estado = (ev.estado_especial || '').toLowerCase();
+            const isCancelled = estado === 'cancelado' || estado === 'suspendido';
             const matchMonth = !month || evMonth === month;
             const matchVis = visibility === 'all' || ev.is_public === (visibility === 'publico');
             
-            return matchMonth && matchVis && ev.status !== 6; // No mostrar cancelados
+            return matchMonth && matchVis && !isCancelled;
         });
 
         if (filtered.length === 0) {
@@ -6780,7 +6808,7 @@ $(document).ready(function () {
         }
 
         reportEventsList.innerHTML = filtered.map(ev => {
-            const date = ev.fecha_inicio ? new Date(ev.fecha_inicio).toLocaleDateString() : 'Sin fecha';
+            const date = getReportSafeDate(ev).toLocaleDateString();
             return `
                 <div class="report-item-card selected" data-id="${ev.id}" onclick="this.classList.toggle('selected'); updateReportSelectAllState();">
                     <input type="checkbox" class="report-item-check" checked onclick="event.stopPropagation()">
@@ -6823,22 +6851,64 @@ $(document).ready(function () {
             return;
         }
 
-        // Robust date helper for report
-        const getReportSafeDate = (ev) => {
-            let dStr = ev.fecha_inicio;
-            if (!dStr && ev.horario) {
-                try {
-                    let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario) : ev.horario;
-                    if (Array.isArray(hs) && hs.length > 0 && hs[0].fecha) dStr = hs[0].fecha;
-                } catch(e){}
+        // Robust date helper for report (Usa la global ahora)
+
+        const getEventReportSummary = (ev) => {
+            try {
+                let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario || '[]') : (ev.horario || []);
+                if (!Array.isArray(hs) || hs.length === 0) return { dayNums: '?', dayNames: '?', times: '00:00 - 00:00' };
+
+                const dateObjects = hs.map(h => {
+                    const parts = h.fecha.split('-');
+                    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                });
+
+                const dayNums = dateObjects.map(d => d.getDate());
+                const dayNames = dateObjects.map(d => d.toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase().replace('.', ''));
+
+                const times = hs.map(h => `${h.inicio} - ${h.fin}`);
+                const uniqueTimes = [...new Set(times)];
+
+                let dayNumsStr = "";
+                if (dayNums.length > 1) {
+                    const isContiguous = dayNums.every((num, i) => i === 0 || num === dayNums[i-1] + 1);
+                    if (isContiguous) {
+                        dayNumsStr = `${dayNums[0]} - ${dayNums[dayNums.length - 1]}`;
+                    } else {
+                        dayNumsStr = dayNums.join(', ');
+                    }
+                } else {
+                    dayNumsStr = dayNums[0];
+                }
+
+                return { 
+                    dayNums: dayNumsStr, 
+                    dayNames: [...new Set(dayNames)].join(' '), 
+                    times: uniqueTimes.join(' | ') 
+                };
+            } catch (e) {
+                return { dayNums: '?', dayNames: '?', times: '00:00 - 00:00' };
             }
-            if (!dStr) dStr = ev.created_at;
-            const d = new Date(dStr);
-            return isNaN(d.getTime()) ? new Date() : d;
+        };
+
+        const getStartTime = (ev) => {
+            try {
+                let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario || '[]') : (ev.horario || []);
+                if (Array.isArray(hs) && hs.length > 0 && hs[0].inicio) return hs[0].inicio;
+            } catch(e){}
+            return ev.horario_inicio || '00:00';
         };
 
         const eventsToRender = allEventsData.filter(ev => selectedIds.includes(String(ev.id))).sort((a,b) => {
-            return getReportSafeDate(a) - getReportSafeDate(b);
+            const dateA = getReportSafeDate(a);
+            const dateB = getReportSafeDate(b);
+            
+            if (dateA.getTime() !== dateB.getTime()) {
+                return dateA - dateB;
+            }
+            
+            // Si son el mismo día, ordenar por hora
+            return getStartTime(a).localeCompare(getStartTime(b));
         });
 
         const container = document.getElementById('report-timeline-items');
@@ -6854,9 +6924,9 @@ $(document).ready(function () {
 
         // Limpiar y Llenar Timeline
         container.innerHTML = eventsToRender.map(ev => {
-            const date = getReportSafeDate(ev);
-            const dayNum = date.getDate();
-            const dayName = date.toLocaleDateString('es-ES', { weekday: 'long' }).toUpperCase();
+            const summary = getEventReportSummary(ev);
+            const dayNum = summary.dayNums;
+            const dayName = summary.dayNames;
             const badgeClass = ev.is_public ? 'badge-public-report' : 'badge-internal-report';
             const badgeText = ev.is_public ? 'Público' : 'Interno';
 
@@ -6875,17 +6945,11 @@ $(document).ready(function () {
                             </div>
                             <h4>${ev.nombre}</h4>
                             <div class="timeline-details">
-                                <div class="timeline-detail-tag"><i class="ph-fill ph-clock"></i> ${(() => {
-                                    try {
-                                        let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario || '[]') : (ev.horario || []);
-                                        if (Array.isArray(hs) && hs.length > 0) return `${hs[0].inicio} - ${hs[0].fin}`;
-                                    } catch(e){}
-                                    return (ev.horario_inicio || '00:00') + ' - ' + (ev.horario_fin || '00:00');
-                                })()}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-clock"></i> ${summary.times}</div>
                                 <div class="timeline-detail-tag"><i class="ph-fill ph-broadcast"></i> ${ev.modalidad || 'Virtual'}</div>
                                 <div class="timeline-detail-tag"><i class="ph-fill ph-map-pin"></i> ${ev.sedes || 'Sede no especificada'}</div>
                                 <div class="timeline-detail-tag"><i class="ph-fill ph-user"></i> ${ev.ponente || 'Pendiente'}</div>
-                                <div class="timeline-detail-tag"><i class="ph-fill ph-users-three"></i> ${ev.audiencia || 'Público General'}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-users-three"></i> <strong>Público:</strong> ${ev.audiencia || 'Público General'}</div>
                             </div>
                         </div>
                     </div>
@@ -7023,28 +7087,29 @@ async function generateEventReportPDF(event, inscritos, asistentes) {
     doc.text(`ID Evento: ${event.id}`, 20, 65);
     doc.text(`Tipo: ${event.tipo} | Modalidad: ${event.modalidad}`, 20, 72);
     doc.text(`Ponente: ${event.ponente}`, 20, 79);
+    doc.text(`Público Objetivo: ${event.audiencia || 'Público General'}`, 20, 86);
 
     // Metrics Box
     doc.setDrawColor(226, 232, 240);
     doc.setFillColor(248, 250, 252);
-    doc.roundedRect(20, 90, 170, 50, 3, 3, 'FD');
+    doc.roundedRect(20, 95, 170, 50, 3, 3, 'FD');
 
     const totalInscritos = inscritos.length;
     const totalAsistentes = asistentes.length;
     const porcentaje = totalInscritos > 0 ? Math.round((totalAsistentes / totalInscritos) * 100) : 0;
 
     doc.setFontSize(14);
-    doc.text("MÉTRICAS DE PARTICIPACIÓN", 105, 105, { align: 'center' });
+    doc.text("MÉTRICAS DE PARTICIPACIÓN", 105, 110, { align: 'center' });
     
     doc.setFontSize(11);
-    doc.text(`Total Inscritos: ${totalInscritos}`, 40, 120);
-    doc.text(`Total Asistentes: ${totalAsistentes}`, 40, 130);
+    doc.text(`Total Inscritos: ${totalInscritos}`, 40, 125);
+    doc.text(`Total Asistentes: ${totalAsistentes}`, 40, 135);
     
     doc.setFontSize(24);
     doc.setTextColor(16, 185, 129); // Verde
-    doc.text(`${porcentaje}%`, 150, 125, { align: 'center' });
+    doc.text(`${porcentaje}%`, 150, 130, { align: 'center' });
     doc.setFontSize(10);
-    doc.text("Asistencia", 150, 135, { align: 'center' });
+    doc.text("Asistencia", 150, 140, { align: 'center' });
 
     // Details logic
     doc.setTextColor(30, 41, 59);

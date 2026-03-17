@@ -1276,7 +1276,7 @@ body {
 }
 
 .timeline-day-num {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 800;
     color: #1e3a8a;
     line-height: 1;
@@ -1329,13 +1329,14 @@ body {
 
 .badge-internal-report {
     background: #fef9c3 !important;
-    color: #854d0e !important;
+    color: #000000 !important;
     padding: 2px 8px !important;
     border-radius: 4px !important;
     font-size: 10px !important;
-    font-weight: 700 !important;
+    font-weight: 800 !important;
     text-transform: uppercase !important;
     display: inline-block !important;
+    border: 1px solid rgba(0,0,0,0.1) !important;
 }
 
 /* --- UI Adjustments --- */

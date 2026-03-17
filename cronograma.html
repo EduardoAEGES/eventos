@@ -391,6 +391,55 @@
             return isNaN(finalDate.getTime()) ? new Date() : finalDate;
         }
 
+        function getStartTime(ev) {
+            try {
+                let hs = ev.horario;
+                if (typeof hs === 'string') hs = JSON.parse(hs || '[]');
+                if (Array.isArray(hs) && hs.length > 0 && hs[0].inicio) return hs[0].inicio;
+            } catch(e) {}
+            return '00:00';
+        }
+
+        function getEventScheduleSummary(ev) {
+            try {
+                let hs = ev.horario;
+                if (typeof hs === 'string') hs = JSON.parse(hs || '[]');
+                if (!Array.isArray(hs) || hs.length === 0) return { dayNums: '?', dayNames: '?', times: '00:00 - 00:00' };
+
+                const dateObjects = hs.map(h => {
+                    if (!h.fecha) return new Date();
+                    const parts = h.fecha.split('-');
+                    return new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                });
+
+                const dayNums = dateObjects.map(d => d.getDate());
+                const dayNames = dateObjects.map(d => d.toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase().replace('.', ''));
+
+                const times = hs.map(h => `${h.inicio} - ${h.fin}`);
+                const uniqueTimes = [...new Set(times)];
+
+                let dayNumsStr = "";
+                if (dayNums.length > 1) {
+                    const isContiguous = dayNums.every((num, i) => i === 0 || num === dayNums[i-1] + 1);
+                    if (isContiguous) {
+                        dayNumsStr = `${dayNums[0]} - ${dayNums[dayNums.length - 1]}`;
+                    } else {
+                        dayNumsStr = dayNums.join(', ');
+                    }
+                } else {
+                    dayNumsStr = dayNums[0];
+                }
+
+                return { 
+                    dayNums: dayNumsStr, 
+                    dayNames: [...new Set(dayNames)].join(' '), 
+                    times: uniqueTimes.join(' | ') 
+                };
+            } catch (e) {
+                return { dayNums: '?', dayNames: '?', times: '00:00 - 00:00' };
+            }
+        }
+
         async function fetchEvents() {
             try {
                 const timelineContainer = document.getElementById('timeline-container');
@@ -407,7 +456,8 @@
                 allEvents = (data || []).filter(ev => {
                     const estado = (ev.estado_especial || '').toLowerCase();
                     const status = ev.status;
-                    return status !== 6 && estado !== 'cancelado' && estado !== 'suspendido' && estado !== 'postergado';
+                    const isCancelled = estado === 'cancelado' || estado === 'suspendido';
+                    return status !== 6 && !isCancelled && estado !== 'postergado';
                 });
 
                 console.log("Eventos cargados:", allEvents.length);
@@ -458,8 +508,18 @@
                 return matchMonth && matchVis;
             });
 
-            // Ordenar por fecha cronológica (más cercanos primero)
-            filtered.sort((a, b) => getSafeDate(a) - getSafeDate(b));
+            // Ordenar por fecha cronológica (más cercanos primero) y luego por hora
+            filtered.sort((a, b) => {
+                const dateA = getSafeDate(a);
+                const dateB = getSafeDate(b);
+                
+                if (dateA.getTime() !== dateB.getTime()) {
+                    return dateA - dateB;
+                }
+                
+                // Si son el mismo día, ordenar por hora de inicio (ej: 10:00 antes que 11:00)
+                return getStartTime(a).localeCompare(getStartTime(b));
+            });
 
             if (filtered.length === 0) {
                 container.innerHTML = `
@@ -482,17 +542,12 @@
                     html += `<div style="margin: 30px 0 15px 40px; font-family: 'Outfit', sans-serif; font-size: 1.2rem; font-weight: 700; color: var(--primary-dark); padding-bottom: 5px; border-bottom: 2px solid #e2e8f0; display: inline-block;">${currentMonthGroup}</div>`;
                 }
 
-                const dayNum = date.getDate();
-                const dayName = date.toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase();
+                const summary = getEventScheduleSummary(ev);
+                const dayNum = summary.dayNums;
+                const dayName = summary.dayNames;
+                const timeStr = summary.times;
                 const badgeClass = ev.is_public ? 'badge-public' : 'badge-internal';
                 const badgeText = ev.is_public ? 'Público' : 'Interno';
-                
-                let timeStr = '00:00 - 00:00';
-                try {
-                    let hs = ev.horario;
-                    if (typeof hs === 'string') hs = JSON.parse(hs || '[]');
-                    if (Array.isArray(hs) && hs.length > 0) timeStr = `${hs[0].inicio} - ${hs[0].fin}`;
-                } catch(e) {}
 
                 let ponente = ev.ponente || 'Por asignar';
                 if(ponente !== 'Por asignar' && ponente.toLowerCase() !== 'pendiente') {
@@ -522,6 +577,7 @@
                                     <div class="timeline-detail-tag"><i class="ph-fill ph-broadcast"></i> ${ev.modalidad || 'Virtual'}</div>
                                     <div class="timeline-detail-tag"><i class="ph-fill ph-map-pin"></i> ${ev.sedes || 'Sede no especificada'}</div>
                                     <div class="timeline-detail-tag"><i class="ph-fill ph-user"></i> ${ponente}</div>
+                                    <div class="timeline-detail-tag" title="Público Objetivo"><i class="ph-fill ph-users-three"></i> ${ev.audiencia || 'Público General'}</div>
                                 </div>
                             </div>
                         </div>
