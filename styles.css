@@ -679,6 +679,26 @@ body {
     margin-top: 0;
 }
 
+.btn-action-header:hover {
+    background: #f5f3ff; /* Un toque de morado muy claro de fondo */
+    border-color: #8b5cf6; /* Moradito */
+    color: #8b5cf6; /* Texto moradito */
+    transform: translateY(-3px);
+    box-shadow: 0 8px 15px -3px rgba(139, 92, 246, 0.3);
+}
+
+.btn-action-header:active {
+    transform: translateY(1px);
+    box-shadow: inset 0 3px 5px rgba(139, 92, 246, 0.2);
+}
+
+/* Hover para el link del cronograma público */
+.nav-link-btn:hover {
+    background: rgba(139, 92, 246, 0.15) !important;
+    transform: translateX(4px);
+    box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.1);
+}
+
 .btn-icon-remove {
     background: transparent;
     border: none;
@@ -1171,3 +1191,230 @@ body {
 .copy-field-btn:active {
     transform: translateY(0);
 }
+
+/* --- Calendar Report Modal Styles --- */
+.report-item-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    transition: var(--transition);
+    cursor: pointer;
+}
+
+.report-item-card:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(99, 102, 241, 0.3);
+}
+
+.report-item-card.selected {
+    border-color: var(--primary);
+    background: rgba(99, 102, 241, 0.1);
+}
+
+.report-item-info {
+    flex: 1;
+}
+
+.report-item-info h5 {
+    font-size: 0.9rem;
+    margin: 0;
+    color: white;
+}
+
+.report-item-info p {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin: 2px 0 0 0;
+}
+
+.report-item-check {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+}
+
+/* --- Timeline Report Render Styles (Premium) --- */
+.timeline-item {
+    position: relative;
+    padding-bottom: 30px;
+    margin-bottom: 10px;
+}
+
+.timeline-dot {
+    position: absolute;
+    left: -32px;
+    top: 5px;
+    width: 22px;
+    height: 22px;
+    background: white;
+    border: 4px solid #4f46e5;
+    border-radius: 50%;
+    z-index: 2;
+    box-shadow: 0 0 0 4px #ffffff;
+}
+
+.timeline-content {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+    display: grid;
+    grid-template-columns: 100px 1fr;
+    gap: 20px;
+}
+
+.timeline-date-box {
+    text-align: center;
+    border-right: 2px solid #e2e8f0;
+    padding-right: 15px;
+}
+
+.timeline-day-num {
+    font-size: 28px;
+    font-weight: 800;
+    color: #1e3a8a;
+    line-height: 1;
+}
+
+.timeline-day-name {
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #4f46e5;
+    margin-top: 5px;
+}
+
+.timeline-main-info h4 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1e293b;
+    margin: 0 0 8px 0;
+}
+
+.timeline-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.timeline-detail-tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #64748b;
+}
+
+.timeline-detail-tag i {
+    color: #4f46e5;
+}
+
+.badge-public-report {
+    background: #dcfce7 !important;
+    color: #166534 !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    display: inline-block !important;
+}
+
+.badge-internal-report {
+    background: #fef9c3 !important;
+    color: #854d0e !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    display: inline-block !important;
+}
+
+/* --- UI Adjustments --- */
+.sidebar {
+    background-color: #f8fafc !important;
+}
+
+.logo {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    margin-bottom: 2rem !important;
+}
+
+.sidebar-logo-img {
+    height: 48px !important;
+    width: auto !important;
+    margin-right: 0 !important;
+    margin-bottom: 10px !important;
+}
+
+.sidebar-logo-text {
+    font-size: 1.05rem !important;
+    color: #0f172a !important;
+    font-weight: 800 !important;
+    line-height: 1.2 !important;
+}
+
+.sidebar .nav-btn {
+    color: #475569 !important;
+}
+
+.sidebar .nav-btn:hover {
+    background-color: #e2e8f0 !important;
+    color: #0f172a !important;
+}
+
+.sidebar .nav-btn.active {
+    background: var(--accent-gradient) !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+}
+
+.sidebar .user-info .name {
+    color: #0f172a !important;
+}
+
+.sidebar .user-info .role {
+    color: #64748b !important;
+}
+
+/* Beveled Header Buttons */
+.btn-action-header {
+    flex: 1;
+    min-width: 200px;
+    justify-content: center;
+    background: linear-gradient(to bottom, #ffffff, #f1f5f9) !important;
+    border: 1px solid #cbd5e1 !important;
+    border-bottom: 3px solid #94a3b8 !important;
+    color: #334155 !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05) !important;
+    transition: all 0.1s ease !important;
+    padding: 0.6rem 1rem !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 0.9rem !important;
+}
+
+.btn-action-header:active {
+    transform: translateY(2px) !important;
+    border-bottom-width: 1px !important;
+    margin-top: 2px !important; /* compensate for border-bottom loss */
+    box-shadow: none !important;
+}
+
+.btn-action-header i {
+    color: #3b82f6 !important;
+    font-size: 1.3rem !important;
+}

@@ -43,8 +43,8 @@
         <!-- Sidebar de Navegación -->
         <aside class="sidebar">
             <div class="logo">
-                <i class="ph-fill ph-certificate"></i>
-                <span>Eventos CONTA - PLN 2026</span>
+                <img class="sidebar-logo-img" src="LOGO_CERTUS_SUNAT.png" alt="Certus Logo">
+                <span class="sidebar-logo-text">Eventos CONTA - PLN 2026</span>
             </div>
 
             <nav class="nav-menu">
@@ -60,6 +60,12 @@
                     <i class="ph ph-chat-circle-text"></i>
                     <span>Comunicación</span>
                 </button>
+                <div style="margin-top: 1rem; border-top: 1px solid rgba(0,0,0,0.05); padding-top: 1rem;">
+                    <a href="cronograma.html" target="_blank" class="nav-link-btn" style="text-decoration: none; display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 12px; background: rgba(59, 130, 246, 0.1); color: #3b82f6 !important; font-weight: 700; transition: all 0.2s ease;">
+                        <i class="ph-fill ph-calendar-check-duotone" style="font-size: 20px;"></i>
+                        <span>Ver Cronograma Público</span>
+                    </a>
+                </div>
                 <!-- 
                 <button class="nav-btn" data-target="generacion">
                     <i class="ph ph-file-pdf"></i>
@@ -89,29 +95,21 @@
         <main class="main-content">
             <header class="top-bar">
                 <h1 id="page-title">Panel de Control</h1>
-                <div class="actions" style="display: flex; gap: 10px;">
-                    <button class="btn-primary"
-                        onclick="window.open('https://docs.google.com/spreadsheets/d/1sHLHwIZbAXlThGj8qTY0QxVn68BL_zOGMvMPE73LfJs/edit?usp=sharing', '_blank')"
-                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                        <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i>
-                        Sheets CERTUS
+                <div class="actions" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn-primary btn-action-header"
+                        onclick="window.open('https://docs.google.com/spreadsheets/d/1sHLHwIZbAXlThGj8qTY0QxVn68BL_zOGMvMPE73LfJs/edit?usp=sharing', '_blank')">
+                        <i class="ph ph-file-xls"></i> Sheets CERTUS
                     </button>
-                    <button class="btn-primary"
-                        onclick="window.open('https://docs.google.com/spreadsheets/d/1p34BL8wZua7Pv4G362HTZUkAVGc_s-1w7HMceZa61T8/edit?usp=sharing', '_blank')"
-                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.5); color: #10b981; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                        <i class="ph ph-file-xls" style="font-size: 1.2rem;"></i>
-                        Sheets COT PLN
+                    <button class="btn-primary btn-action-header"
+                        onclick="window.open('https://docs.google.com/spreadsheets/d/1p34BL8wZua7Pv4G362HTZUkAVGc_s-1w7HMceZa61T8/edit?usp=sharing', '_blank')">
+                        <i class="ph ph-file-xls"></i> Sheets COT PLN
                     </button>
-                    <button class="btn-primary" onclick="window.open('portal.html', '_blank')"
-                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                        <i class="ph ph-student" style="font-size: 1.2rem;"></i>
-                        Portal Alumnos
+                    <button class="btn-primary btn-action-header" onclick="window.open('portal.html', '_blank')">
+                        <i class="ph ph-student"></i> PORTAL DE CONSTANCIAS
                     </button>
-                    <button class="btn-primary"
-                        onclick="window.open('https://eduardoaeges.github.io/eventos/', '_blank')"
-                        style="display: flex; align-items: center; gap: 8px; font-size: 0.95rem; padding: 0.6rem 1.2rem; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.5); color: #60a5fa; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                        <i class="ph ph-arrow-square-out" style="font-size: 1.2rem;"></i>
-                        Abrir Aplicación
+                    <button class="btn-primary btn-action-header"
+                        onclick="window.open('https://eduardoaeges.github.io/eventos/', '_blank')">
+                        <i class="ph ph-arrow-square-out"></i> Abrir Aplicación externa
                     </button>
                 </div>
             </header>
@@ -121,13 +119,13 @@
                 <div class="calendar-header"
                     style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                     <h2>Cronograma General</h2>
-                    <div class="calendar-filters" style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                        <select id="calendar-visibility-filter" class="input-modern small">
-                            <option value="all">Todas las visibilidades</option>
+                    <div class="calendar-filters" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: nowrap;">
+                        <select id="calendar-visibility-filter" class="input-modern small" style="margin: 0; min-width: 150px;">
+                            <option value="all">Todas visibilidades</option>
                             <option value="publico">Solo Públicos</option>
                             <option value="privado">Solo Internos/Privados</option>
                         </select>
-                        <select id="calendar-sede-filter" class="input-modern small">
+                        <select id="calendar-sede-filter" class="input-modern small" style="margin: 0; min-width: 150px;">
                             <option value="all">Todas las Sedes</option>
                             <option value="Todas">Todas (Virtual/General)</option>
                             <option value="AREQUIPA">AREQUIPA</option>
@@ -137,6 +135,9 @@
                             <option value="SAN JUAN DE LURIGANCHO">SAN JUAN DE LURIGANCHO</option>
                             <option value="VILLA EL SALVADOR">VILLA EL SALVADOR</option>
                         </select>
+                        <button id="btn-generate-calendar-report" class="btn-primary" style="padding: 0.5rem 1rem; margin: 0; font-size: 0.85rem; background: #8b5cf6; border: none; display: flex; align-items: center; gap: 6px; white-space: nowrap;">
+                            <i class="ph ph-file-pdf"></i> Generar Reporte
+                        </button>
                     </div>
                 </div>
 
@@ -388,23 +389,36 @@
                                 </select>
                             </div>
 
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                                <div class="form-group">
+                                    <label>CC (Copia)</label>
+                                    <input type="text" id="msg-cc" class="input-modern" placeholder="opcional...">
+                                </div>
+                                <div class="form-group">
+                                    <label>CCO (Destinatarios)</label>
+                                    <input type="text" id="msg-cco" class="input-modern" placeholder="se llenará automáticamente...">
+                                </div>
+                            </div>
+
                             <div class="form-group" id="msg-subject-group">
-                                <label>Asunto (Para correos masivos)</label>
+                                <label>Asunto</label>
                                 <input type="text" id="msg-subject" class="input-modern"
                                     placeholder="Ej: Su constancia de participación...">
                             </div>
 
                             <div class="form-group">
                                 <label>Cuerpo del Mensaje Base</label>
-                                <textarea id="msg-body" class="input-modern area" style="height: 150px;"
+                                <textarea id="msg-body" class="input-modern area" style="height: 120px;"
                                     placeholder="Escribe tu mensaje usando las variables disponibles..."></textarea>
                             </div>
 
-                            <div class="action-bar" style="margin-top: 1rem; display: flex; gap: 0.5rem;">
-                                <button id="btn-msg-save-template" class="btn-secondary small"><i
-                                        class="ph ph-floppy-disk"></i> Guardar Plantilla Local</button>
+                            <div class="action-bar" style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                                <button id="btn-msg-save-template" class="btn-secondary small" title="Guardar cambios permanentemente para este tipo de plantilla"><i
+                                        class="ph ph-floppy-disk"></i> Guardar para siempre</button>
                                 <button id="btn-msg-copy-body" class="btn-primary small"><i class="ph ph-copy"></i>
                                     Copiar Cuerpo</button>
+                                <button id="btn-msg-copy-all" class="btn-primary small" style="background: #8b5cf6;"><i class="ph ph-envelope"></i>
+                                    Copiar Todo p/ Gmail</button>
                             </div>
                         </div>
 
@@ -1220,6 +1234,116 @@
         <div id="cert-firma-date"
             style="position: absolute; top: 670px; left: 0; width: 100%; text-align: center; font-size: 14px; color: #666;">
             Lima, <span id="cert-date-firma">16 de Mayo de 2026</span>
+        </div>
+    </div>
+
+    <!-- Modal para Configurar Reporte de Calendario -->
+    <div id="calendar-report-modal" class="modal-overlay" style="z-index: 2010;">
+        <div class="modal-content" style="max-width: 900px; width: 90%;">
+            <div class="modal-header" style="background: linear-gradient(135deg, #6366f1, #4f46e5);">
+                <h2><i class="ph ph-file-pdf"></i> Configurar Reporte de Calendario</h2>
+                <button class="close-modal" onclick="document.getElementById('calendar-report-modal').classList.remove('active')"><i class="ph ph-x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div style="display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem;">
+                    <!-- Columna de Filtros -->
+                    <div style="background: rgba(255,255,255,0.03); padding: 1.2rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h4 style="margin-bottom: 1rem; color: #818cf8; border-bottom: 1px solid rgba(129, 140, 248, 0.2); padding-bottom: 0.5rem;">Filtros de Reporte</h4>
+                        
+                        <div class="form-group">
+                            <label style="font-size: 0.8rem; text-transform: uppercase; color: #94a3b8;">Visibilidad</label>
+                            <select id="report-visibility-filter" class="input-modern small">
+                                <option value="all">Todos los eventos</option>
+                                <option value="publico">Solo Públicos</option>
+                                <option value="privado">Solo Internos/Privados</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-size: 0.8rem; text-transform: uppercase; color: #94a3b8;">Mes del Reporte</label>
+                            <select id="report-month-filter" class="input-modern small">
+                                <!-- Llenado por JS basado en meses con eventos -->
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label style="font-size: 0.8rem; text-transform: uppercase; color: #94a3b8;">Orientación</label>
+                            <div class="radio-group" style="padding: 0.5rem 0;">
+                                <label class="radio-option" style="font-size: 0.85rem;">
+                                    <input type="radio" name="report-orientation" value="p" checked>
+                                    <span>Vertical (A4)</span>
+                                </label>
+                                <label class="radio-option" style="font-size: 0.85rem;">
+                                    <input type="radio" name="report-orientation" value="l">
+                                    <span>Horizontal</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.05);">
+                            <button id="btn-apply-report-filters" class="btn-primary small" style="width: 100%;"><i class="ph ph-funnel"></i> Actualizar Lista</button>
+                        </div>
+                    </div>
+
+                    <!-- Columna de Selección de Eventos -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                            <h4 style="margin: 0;">Seleccionar Eventos para el Timeline</h4>
+                            <div style="font-size: 0.8rem; color: #94a3b8;">
+                                <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                                    <input type="checkbox" id="report-select-all" checked> Seleccionar todos
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div id="report-events-selection-list" style="max-height: 400px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); padding: 0.5rem;">
+                            <!-- JS fill con tarjetas pequeñas de eventos -->
+                            <p style="text-align: center; color: #64748b; padding: 2rem;">Cargando eventos...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer" style="background: rgba(0,0,0,0.1); border-top: 1px solid rgba(255,255,255,0.05);">
+                <button onclick="document.getElementById('calendar-report-modal').classList.remove('active')" class="btn-secondary">Cancelar</button>
+                <div style="display: flex; gap: 10px;">
+                    <button id="btn-generate-report-image" class="btn-secondary" style="border-color: #fbbf24; color: #fbbf24;">
+                        <i class="ph ph-image"></i> Descargar Imagen (JPEG)
+                    </button>
+                    <button id="btn-generate-report-pdf" class="btn-primary" style="background: #ef4444; border: none;">
+                        <i class="ph ph-file-pdf"></i> Generar Reporte PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor oculto para el diseño del reporte (Timeline Aesthetic) -->
+    <div id="report-render-template" style="position: absolute; left: -9999px; top: -9999px; width: 1000px; background: #ffffff; color: #1e293b; font-family: 'Outfit', sans-serif; padding: 40px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 3px solid #f1f5f9; padding-bottom: 20px;">
+            <div>
+                <img src="LOGO_CERTUS_SUNAT.png" style="height: 60px; margin-bottom: 15px;">
+                <h1 style="font-size: 32px; font-weight: 800; color: #1e3a8a; margin: 0; text-transform: uppercase; letter-spacing: -0.5px;">Cronograma de Actividades</h1>
+                <p id="report-header-period" style="font-size: 18px; color: #64748b; margin: 5px 0 0 0; font-weight: 500;">Periodo: Mayo 2026</p>
+            </div>
+            <div style="text-align: right;">
+                <div style="background: #1e3a8a; color: white; padding: 10px 20px; border-radius: 5px; font-weight: 700; font-size: 14px;">
+                    REPORTE ACADÉMICO
+                </div>
+                <p style="font-size: 12px; color: #94a3b8; margin-top: 10px;">Generado el: <span id="report-gen-date">16/03/2026</span></p>
+            </div>
+        </div>
+
+        <div id="report-timeline-container" style="position: relative; padding-left: 40px; padding-top: 20px;">
+            <!-- La línea vertical del timeline se dibujará como un pseudo-elemento o un div -->
+            <div style="position: absolute; left: 19px; top: 0; bottom: 0; width: 4px; background: #e2e8f0; border-radius: 2px;"></div>
+            
+            <div id="report-timeline-items">
+                <!-- Los items del reporte se generarán aquí -->
+            </div>
+        </div>
+
+        <div style="margin-top: 40px; text-align: center; border-top: 1px solid #f1f5f9; padding-top: 20px; font-size: 12px; color: #94a3b8;">
+            © 2026 Escuela de Educación Superior CERTUS. Todos los derechos reservados.
         </div>
     </div>
 

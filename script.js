@@ -1,5 +1,61 @@
-// 🔗 URL DEL WEBHOOK DE APPS SCRIPT PARA SINCRONIZAR A SHEETS
 const GOOGLE_APP_SCRIPT_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzcuWg_eQmRMYfcilsm4b4TxlBw8YrP5p6U-UuewY6zQv7zS8ow2DZjO-ek2hYuvk4/exec";
+
+// --- ESTADO GLOBAL (Accesible desde todos los módulos) ---
+let allEventsData = [];
+let allPonentesData = [];
+let comParticipants = [];
+let asistParticipants = [];
+let currentComEventId = null;
+
+// --- HELPERS PARA NOMBRES ---
+function toTitleCase(str) {
+    if (!str) return '';
+    return str.toLowerCase().replace(/(^|\s)\S/g, l => l.toUpperCase());
+}
+
+function intelligentSplitName(surnames, names) {
+    let s = (surnames || '').trim();
+    let n = (names || '').trim();
+
+    // 1. Si apellidos está vacío y nombres tiene contenido
+    if (!s && n) {
+        if (n.includes(',')) {
+            const parts = n.split(',');
+            s = parts[0].trim();
+            n = parts[1].trim();
+        } else if (n.includes(' ')) {
+            const words = n.split(/\s+/);
+            if (words.length >= 3) {
+                s = words.slice(0, 2).join(' ');
+                n = words.slice(2).join(' ');
+            } else if (words.length === 2) {
+                s = words[0]; n = words[1];
+            }
+        }
+    } 
+    // 2. Si son idénticos (duplicado)
+    else if (s && n && s.toLowerCase() === n.toLowerCase()) {
+        if (s.includes(',')) {
+            const parts = s.split(',');
+            s = parts[0].trim();
+            n = parts[1].trim();
+        } else if (s.includes(' ')) {
+            const words = s.split(/\s+/);
+            if (words.length >= 3) {
+                s = words.slice(0, 2).join(' ');
+                n = words.slice(2).join(' ');
+            } else if (words.length === 2) {
+                s = words[0]; n = words[1];
+            }
+        }
+    }
+    // 3. Si nombres empieza con apellidos
+    else if (s && n && n.toLowerCase().startsWith(s.toLowerCase() + ' ')) {
+        n = n.substring(s.length).trim();
+    }
+
+    return { apellidos: toTitleCase(s), nombres: toTitleCase(n) };
+}
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -258,8 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.supabaseClient = window.supabase.createClient(supabaseUrl, supabaseKey);
     const supabase = window.supabaseClient;
 
-    let allEventsData = [];
-    let allPonentesData = [];
+    // (Variables globales movidas al inicio del archivo)
 
     // Function to load events
     async function loadEvents() {
@@ -1071,16 +1126,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 </div>
                 <p style="margin-bottom: 0.7rem;"><strong>Tipo:</strong> <span style="color: #1e293b;">${eventData.tipo}</span></p>
+                <p style="margin-bottom: 0.7rem;"><strong>Ponente / Expositor:</strong> <span style="color: #4f46e5; font-weight: 600;">${eventData.ponente || 'Docente por Asignar'}</span></p>
                 <p style="margin-bottom: 0.7rem;"><strong>Responsable:</strong> <span style="color: #1e293b;">${eventData.responsable || 'No especificado'}</span></p>
-                <p style="margin-bottom: 1.2rem; padding: 8px; background: rgba(59,130,246,0.05); border-radius: 6px;">
-                    <strong style="display:block; margin-bottom: 4px;">Descripción:</strong>
-                    <span style="color: #334155; font-size:0.9rem;">${eventData.descripcion_evento || 'Sin descripción'}</span>
+                <p style="margin-bottom: 1.2rem; padding: 10px; background: rgba(59,130,246,0.05); border-radius: 8px; border-left: 3px solid #3b82f6;">
+                    <strong style="display:block; margin-bottom: 4px; color: #1e3a8a;">Descripción del Evento:</strong>
+                    <span style="color: #334155; font-size:0.92rem;">${eventData.descripcion_evento || 'Sin descripción detallada registrada.'}</span>
                 </p>
-                <p style="margin-bottom: 0.7rem;"><strong>Modalidad:</strong> <span style="color: #1e293b;">${eventData.modalidad}</span></p>
-                <p style="margin-bottom: 0.7rem;"><strong>Público Objetivo:</strong> <span style="color: #1e293b;">${eventData.audiencia || 'No especificado'}</span></p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 0.7rem;">
+                    <p><strong>Modalidad:</strong> <br><span style="color: #1e293b;">${eventData.modalidad}</span></p>
+                    <p><strong>Público Objetivo:</strong> <br><span style="color: #1e293b;">${eventData.audiencia || 'No especificado'}</span></p>
+                </div>
                 <p><strong>Estado Actual:</strong> <span style="display:inline-block; margin-left: 0.5rem; padding: 0.2rem 0.6rem; background: ${statusColor}22; color: ${statusColor}; border-radius: 4px; font-weight: bold;">${statusBadgeLabel}</span></p>
-            <div class="detail-label"><i class="ph ph-hash"></i> ID Sincronización</div>
-            <div class="detail-value" style="font-family: monospace; font-size:0.8rem; background: rgba(255,255,255,0.05); padding: 2px 6px; border-radius:4px;">${eventData.sheet_id || 'Generado Localmente / No Sincronizado'}</div>
         </div>`;
 
         if (eventData.sustento) {
@@ -1090,7 +1146,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             </div>`;
         }
 
-        htmlContent += `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
+        htmlContent += `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+            <button class="btn-primary small" style="background: #3b82f6; border: none;" onclick="downloadEventDetail('${encodeURIComponent(JSON.stringify(eventData))}')"><i class="ph ph-download-simple"></i> Descargar Detalles</button>
             <button class="btn-secondary small" style="color:#3b82f6; border-color: rgba(59, 130, 246, 0.4);" onclick="copyFormLink('${eventData.id}')"><i class="ph ph-link"></i> Inscripción</button>
             <button class="btn-secondary small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" onclick="copyAsistenciaLink('${eventData.id}')"><i class="ph ph-clipboard-text"></i> Asistencia</button>
         </div>`;
@@ -1185,20 +1242,18 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelector('#event-form button[type="submit"]').textContent = 'Actualizar Evento';
 
         // Populate fields
-        document.getElementById('event-type').value = eventData.tipo;
+        $('#event-type').val(eventData.tipo).trigger('change');
         document.getElementById('event-name').value = eventData.nombre;
-
         // Ponente check if exists in options
         const selectPonente = document.getElementById('event-ponente');
         let ponenteFound = false;
         Array.from(selectPonente.options).forEach(opt => {
             if (opt.value === eventData.ponente) ponenteFound = true;
         });
-
         if (ponenteFound) {
-            selectPonente.value = eventData.ponente;
+            $(selectPonente).val(eventData.ponente).trigger('change');
         } else {
-            selectPonente.value = 'Pendiente';
+            $(selectPonente).val('Pendiente').trigger('change');
         }
 
         // Responsables (Múltiple Checkboxes)
@@ -5773,9 +5828,7 @@ window.addEventListener('click', (e) => {
 // COMUNICACION MODULE LOGIC
 // ==========================================
 $(document).ready(function () {
-    let currentComEventId = null;
-    let comParticipants = [];
-    let asistParticipants = []; // Nueva lista para asistentes
+    // (Variables globales movidas al inicio del archivo)
 
     // On Event Change
     $('#comunicacion-event-selector').on('change', async function () {
@@ -5949,6 +6002,7 @@ $(document).ready(function () {
             if (error) throw error;
             asistParticipants = data || [];
             renderAsistTable();
+            refreshTemplateUI();
         } catch (error) {
             console.error(error);
             tbody.innerHTML = `<tr><td colspan="8" style="color:red; text-align:center;">Error al cargar asistentes: ${error.message}</td></tr>`;
@@ -6072,11 +6126,11 @@ $(document).ready(function () {
     document.getElementById('btn-asist-save-db')?.addEventListener('click', async function () {
         if (!currentComEventId) { Swal.fire('Atención', 'Seleccione un evento', 'warning'); return; }
         const result = await Swal.fire({ 
-            title: '¿Guardar datos en evento?', 
-            text: 'Se sincronizarán los asistentes con el evento seleccionado. Los datos se fusionarán por DNI.', 
+            title: '¿Desea reemplazar registros?', 
+            text: 'Se han detectado cambios. ¿Desea reemplazar los registros existentes uno por uno con los nuevos nombres capitalizados?', 
             icon: 'question', 
             showCancelButton: true, 
-            confirmButtonText: 'Sí, Guardar datos' 
+            confirmButtonText: 'Sí, Reemplazar y Guardar' 
         });
         if (result.isConfirmed) {
             Swal.fire({ title: 'Guardando...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -6085,9 +6139,42 @@ $(document).ready(function () {
                 const uniqueData = new Map();
                 filtered.forEach(p => {
                     const key = p.dni || `no-dni-${Math.random()}`;
-                    uniqueData.set(key, { ...p, evento_id: parseInt(currentComEventId), asistencia: true, certificado_autorizado: true });
+                    const formatted = intelligentSplitName(p.apellidos, p.nombres);
+                    uniqueData.set(key, { 
+                        ...p, 
+                        apellidos: formatted.apellidos,
+                        nombres: formatted.nombres,
+                        evento_id: parseInt(currentComEventId), 
+                        asistencia: true, 
+                        certificado_autorizado: true 
+                    });
                 });
-                const toSave = Array.from(uniqueData.values()).map(p => { if (!p.id) delete p.id; return p; });
+                const toSave = Array.from(uniqueData.values()).map(p => {
+                    const cleanObj = { ...p };
+                    
+                    // 1. Asegurar ID (Si no lo tiene, generarlo en frontend)
+                    if (!cleanObj.id || cleanObj.id === 'null' || cleanObj.id === '') {
+                        if (window.crypto && window.crypto.randomUUID) {
+                            cleanObj.id = window.crypto.randomUUID();
+                        } else {
+                            delete cleanObj.id; // Fallback extremo
+                        }
+                    }
+
+                    // 2. ELIMINAR 'created_at' de TODO el lote.
+                    // Si un objeto lo tiene y otro no, PostgREST enviará NULL para los que no lo tienen.
+                    // Al quitarlo de todos, la BD usará el DEFAULT para nuevos y no tocará existentes.
+                    delete cleanObj.created_at;
+                    delete cleanObj.updated_at;
+
+                    // 3. Limpiar campos de UI
+                    delete cleanObj.v_isValid;
+                    delete cleanObj.v_errors;
+
+                    return cleanObj;
+                });
+
+                console.log("Datos a enviar a asistencias (Lote Consistente):", toSave);
                 const { error } = await window.supabaseClient.from('asistencias').upsert(toSave, { onConflict: 'dni, evento_id' });
                 if (error) throw error;
                 Swal.fire('Guardado', `Asistentes sincronizados correctamente (${toSave.length} únicos).`, 'success');
@@ -6114,12 +6201,11 @@ $(document).ready(function () {
                         return key ? row[key].trim() : '';
                     };
                     const dni = getVal(['dni', 'documento']).replace(/\D/g, '').substring(0, 8);
-                    let apellidos = getVal(['apellidos']).trim();
-                    let nombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
-                    if (!apellidos && nombres.includes(',')) {
-                        const parts = nombres.split(',');
-                        apellidos = parts[0].trim(); nombres = parts[1].trim();
-                    }
+                    const rawApellidos = getVal(['apellidos']).trim();
+                    const rawNombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
+                    
+                    const { apellidos, nombres } = intelligentSplitName(rawApellidos, rawNombres);
+
                     const correo = getVal(['correo', 'email']).trim();
                     const telefono = getVal(['teléfono', 'celular']).replace(/\s+/g, '');
                     if (apellidos || nombres || correo || dni) {
@@ -6190,6 +6276,7 @@ $(document).ready(function () {
             });
 
             renderComTable();
+            refreshTemplateUI();
             Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `${comParticipants.length} inscritos cargados de la web`, showConfirmButton: false, timer: 3000 });
         } catch (err) {
             console.error(err);
@@ -6268,11 +6355,11 @@ $(document).ready(function () {
         }
 
         const result = await Swal.fire({
-            title: '¿Guardar Cambios?',
-            text: 'Esto sobreescribirá los datos del evento en Supabase. Se añadirán los nuevos, se actualizarán los modificados. Las filas eliminadas AQUÍ se deben eliminar manualmente de la BD, ¿Desea proceder guardando los registros actuales?',
-            icon: 'warning',
+            title: '¿Reemplazar e Inscritos?',
+            text: '¿Desea reemplazar los registros existentes uno por uno con los nuevos datos capitalizados?',
+            icon: 'question',
             showCancelButton: true,
-            confirmButtonText: 'Sí, Guardar',
+            confirmButtonText: 'Sí, Reemplazar',
             cancelButtonText: 'Cancelar'
         });
 
@@ -6285,20 +6372,41 @@ $(document).ready(function () {
                 // Deduplicación por DNI antes de enviar a Supabase (mismo evento)
                 const uniqueData = new Map();
                 filtered.forEach(p => {
-                    // Si no tiene DNI, usamos un fallback temporal para permitir el guardado si el usuario así lo desea
-                    // Pero idealmente el DNI es la clave de conflicto
                     const key = p.dni || `no-dni-${Math.random()}`;
+                    const formatted = intelligentSplitName(p.apellidos, p.nombres);
                     uniqueData.set(key, {
                         ...p,
+                        apellidos: formatted.apellidos,
+                        nombres: formatted.nombres,
                         evento_id: parseInt(currentComEventId),
                         asistencia: p.asistencia || false
                     });
                 });
 
                 const toSave = Array.from(uniqueData.values()).map(p => {
-                    if (!p.id) delete p.id;
-                    return p;
+                    const cleanObj = { ...p };
+                    
+                    // 1. Asegurar ID 
+                    if (!cleanObj.id || cleanObj.id === 'null' || cleanObj.id === '') {
+                        if (window.crypto && window.crypto.randomUUID) {
+                            cleanObj.id = window.crypto.randomUUID();
+                        } else {
+                            delete cleanObj.id;
+                        }
+                    }
+
+                    // 2. ELIMINAR 'created_at' de TODO el lote por consistencia PostgREST
+                    delete cleanObj.created_at;
+                    delete cleanObj.updated_at;
+
+                    // 3. Limpiar UI
+                    delete cleanObj.v_isValid;
+                    delete cleanObj.v_errors;
+
+                    return cleanObj;
                 });
+
+                console.log("Datos a enviar a participantes (Lote Consistente):", toSave);
 
                 if (toSave.length === 0) {
                     Swal.fire('Aviso', 'No hay datos válidos para guardar.', 'info');
@@ -6358,21 +6466,10 @@ $(document).ready(function () {
                     };
 
                     const dni = getVal(['dni', 'documento', 'identidad']).replace(/\D/g, '').substring(0, 8);
-                    let apellidos = getVal(['apellidos']).trim();
-                    let nombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
+                    const rawApellidos = getVal(['apellidos']).trim();
+                    const rawNombres = getVal(['nombres', 'nombre']).trim() || getVal(['nombres y apellidos']).trim();
 
-                    // If apellidos is empty but nombres looks like a combined name (e.g., "Perez, Juan" or "Perez Juan")
-                    if (!apellidos && nombres) {
-                        if (nombres.includes(',')) {
-                            const parts = nombres.split(',');
-                            apellidos = parts[0].trim();
-                            nombres = parts[1].trim();
-                        } else if (nombres.includes(' ')) {
-                            // Simple heuristic: last word(s) are names, first word(s) are surnames? 
-                            // Or just put everything in nomes for the user to fix manually if unsure.
-                            // But usually it's "APELLIDOS NOMBRES"
-                        }
-                    }
+                    const { apellidos, nombres } = intelligentSplitName(rawApellidos, rawNombres);
 
                     const correo = getVal(['correo', 'email']).trim();
                     const telefono = getVal(['teléfono', 'celular', 'phone', 'telef']).replace(/\s+/g, '');
@@ -6401,46 +6498,448 @@ $(document).ready(function () {
         });
     });
 
-    // Templates Logic
+    // --- TEMPLATES LOGIC (DINÁMICO Y PERSISTENTE) ---
     const msgTemplateType = document.getElementById('msg-template-type');
     const msgSubjectGroup = document.getElementById('msg-subject-group');
     const msgSubject = document.getElementById('msg-subject');
+    const msgCC = document.getElementById('msg-cc');
+    const msgCCO = document.getElementById('msg-cco');
     const msgBody = document.getElementById('msg-body');
 
-    const templates = {
+    const DEFAULT_TEMPLATES = {
         email_constancia: {
             subject: 'Su Constancia de Participación - {curso}',
-            body: 'Estimado/a {nombre_completo},\n\nAdjuntamos a este correo su constancia por haber participado en el evento "{curso}" realizado el {fecha}.\n\nAtentamente,\nEl Equipo Académico'
+            cc: '',
+            cco: '', // Se llenará con asistentes
+            body: 'Estimado/a {nombre_completo},\n\nAdjuntamos a este correo su constancia por haber participado en el evento "{curso}" realizado el {fecha}.\n\nAtentamente,\nEl Equipo Académico',
+            audience: 'asistentes'
         },
         email_recordatorio: {
             subject: 'Recordatorio Iniciamos pronto - {curso}',
-            body: '¡Hola {nombre}!\n\nTe recordamos que pronto estaremos iniciando nuestro evento "{curso}".\nNo olvides conectarte puntual.\n\nSaludos.'
+            cc: '',
+            cco: '', // Se llenará con inscritos
+            body: '¡Hola {nombre}!\n\nTe recordamos que pronto estaremos iniciando nuestro evento "{curso}".\nNo olvides conectarte puntual.\n\nSaludos.',
+            audience: 'inscritos'
         },
         wsp_delegados: {
             subject: '',
-            body: '¡Hola estimado delegado {nombre}!\n\nLe comunicamos que el evento "{curso}" está por iniciar. Apreciaremos mucho que pueda compartir este recordatorio con su grupo.\n\n¡Gracias por su apoyo!'
+            cc: '',
+            cco: '',
+            body: '¡Hola estimado delegado {nombre}!\n\nLe comunicamos que el evento "{curso}" está por iniciar. Apreciaremos mucho que pueda compartir este recordatorio con su grupo.\n\n¡Gracias por su apoyo!',
+            audience: 'inscritos'
         },
         wsp_recordatorio: {
             subject: '',
-            body: '¡Hola {nombre}!\n\nNo olvides que hoy tenemos el evento: "{curso}".\n\n¡Te esperamos!'
+            cc: '',
+            cco: '',
+            body: '¡Hola {nombre}!\n\nNo olvides que hoy tenemos el evento: "{curso}".\n\n¡Te esperamos!',
+            audience: 'inscritos'
         }
     };
 
-    msgTemplateType?.addEventListener('change', function () {
-        if (!this.value) return;
-        const val = this.value;
+    // Cargar desde localStorage o usar defaults
+    let userTemplates = JSON.parse(localStorage.getItem('eventos_templates')) || DEFAULT_TEMPLATES;
+
+    function getSelectedEventData() {
+        if (!currentComEventId) return null;
+        return allEventsData.find(e => e.id == currentComEventId);
+    }
+
+    function refreshTemplateUI() {
+        if (!msgTemplateType) return;
+        const val = msgTemplateType.value;
+        const temp = userTemplates[val] || DEFAULT_TEMPLATES[val];
+        const event = getSelectedEventData();
+
         if (val.startsWith('wsp_')) {
             msgSubjectGroup.style.display = 'none';
         } else {
             msgSubjectGroup.style.display = 'block';
         }
 
-        msgSubject.value = templates[val].subject;
-        msgBody.value = templates[val].body;
+        // Reemplazo de variables dinámicas {curso}, {fecha}
+        const curso = event ? (event.nombre || 'el evento') : '{curso}';
+        const fecha = event ? (event.fecha_inicio || 'la fecha acordada') : '{fecha}';
+
+        const replaceVars = (str) => {
+            if (!str) return '';
+            return str.replace(/{curso}/g, curso).replace(/{fecha}/g, fecha);
+        };
+
+        if (msgSubject) msgSubject.value = replaceVars(temp.subject);
+        if (msgCC) msgCC.value = temp.cc || '';
+        if (msgBody) msgBody.value = replaceVars(temp.body);
+
+        // Lógica de Audiencia y CCO
+        if (msgCCO) {
+            let emails = [];
+            if (temp.audience === 'asistentes') {
+                emails = asistParticipants.map(p => p.correo).filter(e => e && e.includes('@'));
+            } else {
+                emails = comParticipants.map(p => p.correo).filter(e => e && e.includes('@'));
+            }
+            msgCCO.value = [...new Set(emails)].join(', ');
+        }
+    }
+
+    msgTemplateType?.addEventListener('change', refreshTemplateUI);
+
+    // Botón: Guardar para siempre
+    document.getElementById('btn-msg-save-template')?.addEventListener('click', () => {
+        const val = msgTemplateType.value;
+        if (!val) return;
+
+        userTemplates[val] = {
+            ...userTemplates[val],
+            subject: msgSubject.value,
+            cc: msgCC.value,
+            body: msgBody.value
+        };
+
+        localStorage.setItem('eventos_templates', JSON.stringify(userTemplates));
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Plantilla guardada permanentemente', showConfirmButton: false, timer: 2000 });
     });
 
+    // Botón: Copiar Todo (Para Gmail)
+    document.getElementById('btn-msg-copy-all')?.addEventListener('click', async () => {
+        const text = `PARA: (Usa los de CCO abajo)\nCC: ${msgCC.value}\nCCO: ${msgCCO.value}\n\nASUNTO: ${msgSubject.value}\n\nCUERPO:\n${msgBody.value}`;
+        
+        try {
+            await navigator.clipboard.writeText(text);
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Datos copiados para Gmail', showConfirmButton: false, timer: 2000 });
+        } catch (e) {
+            // Fallback
+            const dummy = document.createElement("textarea");
+            document.body.appendChild(dummy);
+            dummy.value = text;
+            dummy.select();
+            document.execCommand("copy");
+            document.body.removeChild(dummy);
+        }
+    });
+
+    // Botón: Copiar Cuerpo
+    document.getElementById('btn-msg-copy-body')?.addEventListener('click', () => {
+        msgBody.select();
+        document.execCommand('copy');
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Cuerpo copiado', showConfirmButton: false, timer: 1500 });
+    });
+
+    // Escuchar cambios en el selector de evento para refrescar plantillas
+    document.getElementById('comunicacion-event-selector')?.addEventListener('change', () => {
+        setTimeout(refreshTemplateUI, 500); // Pequeño delay para asegurar que los datos se carguen
+    });
+
+    // --- LOGICA DE DESCARGA DE DETALLES INDIVIDUALES ---
+    window.downloadEventDetail = async function(eventDataStr) {
+        const ev = JSON.parse(decodeURIComponent(eventDataStr));
+        
+        // Crear un contenedor temporal para el renderizado
+        const container = document.createElement('div');
+        container.style.position = 'fixed';
+        container.style.left = '-9999px';
+        container.style.top = '0';
+        container.style.width = '600px';
+        container.style.background = '#ffffff';
+        container.style.padding = '40px';
+        container.style.fontFamily = "'Outfit', sans-serif";
+        container.style.color = '#1e293b';
+
+        let dateStr = "Sin fecha";
+        let horariosHtml = "";
+        try {
+            const hs = JSON.parse(ev.horario || '[]');
+            if (hs.length > 0) {
+                dateStr = hs[0].fecha;
+                hs.forEach(h => {
+                    horariosHtml += `<li>${h.fecha} | ${h.inicio} - ${h.fin}</li>`;
+                });
+            }
+        } catch(e){}
+
+        container.innerHTML = `
+            <div style="border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                <div style="background: linear-gradient(135deg, #1e3a8a, #3b82f6); padding: 30px; color: white;">
+                    <img src="LOGO_CERTUS_SUNAT.png" style="height: 40px; margin-bottom: 20px; filter: brightness(0) invert(1);">
+                    <div style="text-transform: uppercase; font-size: 12px; font-weight: 700; opacity: 0.8; margin-bottom: 5px;">${ev.tipo}</div>
+                    <h1 style="font-size: 24px; margin: 0; line-height: 1.2;">${ev.nombre}</h1>
+                </div>
+                <div style="padding: 30px; background: white;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px;">
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Ponente / Expositor</div>
+                            <div style="color: #1e293b; font-weight: 600;">${ev.ponente || 'Por asignar'}</div>
+                        </div>
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Modalidad / Sede</div>
+                            <div style="color: #1e293b; font-weight: 600;">${ev.modalidad} | ${ev.sedes || 'Virtual'}</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 25px;">
+                        <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 5px;">Cronograma</div>
+                        <ul style="margin: 0; padding-left: 18px; color: #1e293b; font-size: 14px; line-height: 1.6;">
+                            ${horariosHtml}
+                        </ul>
+                    </div>
+
+                    <div style="margin-bottom: 25px; padding: 15px; background: #f8fafc; border-radius: 8px; border: 1px solid #f1f5f9;">
+                        <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700; margin-bottom: 8px;">Resumen del Evento</div>
+                        <div style="color: #334155; font-size: 13px; line-height: 1.5;">${ev.descripcion_evento || 'Sin descripción adicional.'}</div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; pt: 20px; margin-top: 10px;">
+                        <div>
+                            <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Dirigido a</div>
+                            <div style="color: #1e293b; font-size: 13px;">${ev.audiencia || 'Público General'}</div>
+                        </div>
+                        <div style="text-align: right;">
+                             <div style="color: #64748b; font-size: 11px; text-transform: uppercase; font-weight: 700;">Estado</div>
+                             <div style="color: ${ev.status === 7 ? '#10b981' : '#3b82f6'}; font-weight: 700; font-size: 13px;">${getStatusText(ev.status)}</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="background: #f1f5f9; padding: 15px; text-align: center; font-size: 10px; color: #94a3b8;">
+                    © 2026 EES CERTUS - SG Calidad Académica
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(container);
+        
+        try {
+            Swal.fire({ title: 'Preparando descarga...', didOpen: () => { Swal.showLoading(); } });
+            
+            const canvas = await html2canvas(container, {
+                scale: 2,
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+            
+            const link = document.createElement('a');
+            link.download = `Detalle_${ev.nombre.replace(/\s+/g, '_')}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.9);
+            link.click();
+            
+            Swal.close();
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Imagen descargada', showConfirmButton: false, timer: 2000 });
+        } catch (err) {
+            console.error(err);
+            Swal.fire('Error', 'No se pudo generar la imagen de detalles.', 'error');
+        } finally {
+            document.body.removeChild(container);
+        }
+    };
+
+    // --- LOGICA DEL REPORTE DE CALENDARIO (TIMELINE) ---
+    const calendarReportModal = document.getElementById('calendar-report-modal');
+    const btnOpenReportModal = document.getElementById('btn-generate-calendar-report');
+    const reportEventsList = document.getElementById('report-events-selection-list');
+    const reportMonthFilter = document.getElementById('report-month-filter');
+    const reportVisibilityFilter = document.getElementById('report-visibility-filter');
+    const btnApplyReportFilters = document.getElementById('btn-apply-report-filters');
+    const reportSelectAll = document.getElementById('report-select-all');
+
+    if (btnOpenReportModal) {
+        btnOpenReportModal.addEventListener('click', () => {
+            // Cargar meses disponibles
+            const months = [...new Set(allEventsData.map(ev => {
+                const date = new Date(ev.fecha_inicio || ev.created_at);
+                return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            }))].sort().reverse();
+
+            reportMonthFilter.innerHTML = months.map(m => {
+                const [y, mm] = m.split('-');
+                const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                return `<option value="${m}">${monthNames[parseInt(mm)-1]} ${y}</option>`;
+            }).join('');
+
+            refreshReportEventsList();
+            calendarReportModal.classList.add('active');
+        });
+    }
+
+    function refreshReportEventsList() {
+        if (!reportEventsList) return;
+        const month = reportMonthFilter.value;
+        const visibility = reportVisibilityFilter.value;
+
+        const filtered = allEventsData.filter(ev => {
+            const date = new Date(ev.fecha_inicio || ev.created_at);
+            const evMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+            
+            const matchMonth = !month || evMonth === month;
+            const matchVis = visibility === 'all' || ev.is_public === (visibility === 'publico');
+            
+            return matchMonth && matchVis && ev.status !== 6; // No mostrar cancelados
+        });
+
+        if (filtered.length === 0) {
+            reportEventsList.innerHTML = '<p style="text-align: center; color: #64748b; padding: 2rem;">No hay eventos que coincidan con los filtros.</p>';
+            return;
+        }
+
+        reportEventsList.innerHTML = filtered.map(ev => {
+            const date = ev.fecha_inicio ? new Date(ev.fecha_inicio).toLocaleDateString() : 'Sin fecha';
+            return `
+                <div class="report-item-card selected" data-id="${ev.id}" onclick="this.classList.toggle('selected'); updateReportSelectAllState();">
+                    <input type="checkbox" class="report-item-check" checked onclick="event.stopPropagation()">
+                    <div class="report-item-info">
+                        <h5>${ev.nombre}</h5>
+                        <p>${date} | ${ev.tipo} | ${ev.modalidad}</p>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        updateReportSelectAllState();
+    }
+
+    window.updateReportSelectAllState = function() {
+        const total = reportEventsList.querySelectorAll('.report-item-card').length;
+        const selected = reportEventsList.querySelectorAll('.report-item-card.selected').length;
+        if (reportSelectAll) reportSelectAll.checked = (total > 0 && total === selected);
+    };
+
+    if (reportSelectAll) {
+        reportSelectAll.addEventListener('change', (e) => {
+            const checked = e.target.checked;
+            reportEventsList.querySelectorAll('.report-item-card').forEach(card => {
+                if (checked) card.classList.add('selected');
+                else card.classList.remove('selected');
+            });
+        });
+    }
+
+    if (btnApplyReportFilters) {
+        btnApplyReportFilters.addEventListener('click', refreshReportEventsList);
+    }
+
+    // Funcion Principal de Generación
+    async function generateTimelineReport(format = 'pdf') {
+        const selectedIds = Array.from(reportEventsList.querySelectorAll('.report-item-card.selected')).map(c => c.dataset.id);
+        if (selectedIds.length === 0) {
+            Swal.fire('Atención', 'Selecciona al menos un evento para el reporte.', 'warning');
+            return;
+        }
+
+        // Robust date helper for report
+        const getReportSafeDate = (ev) => {
+            let dStr = ev.fecha_inicio;
+            if (!dStr && ev.horario) {
+                try {
+                    let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario) : ev.horario;
+                    if (Array.isArray(hs) && hs.length > 0 && hs[0].fecha) dStr = hs[0].fecha;
+                } catch(e){}
+            }
+            if (!dStr) dStr = ev.created_at;
+            const d = new Date(dStr);
+            return isNaN(d.getTime()) ? new Date() : d;
+        };
+
+        const eventsToRender = allEventsData.filter(ev => selectedIds.includes(String(ev.id))).sort((a,b) => {
+            return getReportSafeDate(a) - getReportSafeDate(b);
+        });
+
+        const container = document.getElementById('report-timeline-items');
+        const headerPeriod = document.getElementById('report-header-period');
+        const genDate = document.getElementById('report-gen-date');
+        
+        // Configurar Header
+        const monthVal = reportMonthFilter.value;
+        const [y, mm] = monthVal.split('-');
+        const monthNames = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+        headerPeriod.textContent = `Periodo: ${monthNames[parseInt(mm)-1]} ${y}`;
+        genDate.textContent = new Date().toLocaleDateString();
+
+        // Limpiar y Llenar Timeline
+        container.innerHTML = eventsToRender.map(ev => {
+            const date = getReportSafeDate(ev);
+            const dayNum = date.getDate();
+            const dayName = date.toLocaleDateString('es-ES', { weekday: 'long' }).toUpperCase();
+            const badgeClass = ev.is_public ? 'badge-public-report' : 'badge-internal-report';
+            const badgeText = ev.is_public ? 'Público' : 'Interno';
+
+            return `
+                <div class="timeline-item">
+                    <div class="timeline-dot"></div>
+                    <div class="timeline-content">
+                        <div class="timeline-date-box">
+                            <div class="timeline-day-num">${dayNum}</div>
+                            <div class="timeline-day-name">${dayName}</div>
+                        </div>
+                        <div class="timeline-main-info">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px;">
+                                <span class="${badgeClass}">${badgeText}</span>
+                                <span style="font-size: 11px; color: #94a3b8; font-weight: 600;">${ev.tipo}</span>
+                            </div>
+                            <h4>${ev.nombre}</h4>
+                            <div class="timeline-details">
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-clock"></i> ${(() => {
+                                    try {
+                                        let hs = typeof ev.horario === 'string' ? JSON.parse(ev.horario || '[]') : (ev.horario || []);
+                                        if (Array.isArray(hs) && hs.length > 0) return `${hs[0].inicio} - ${hs[0].fin}`;
+                                    } catch(e){}
+                                    return (ev.horario_inicio || '00:00') + ' - ' + (ev.horario_fin || '00:00');
+                                })()}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-broadcast"></i> ${ev.modalidad || 'Virtual'}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-map-pin"></i> ${ev.sedes || 'Sede no especificada'}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-user"></i> ${ev.ponente || 'Pendiente'}</div>
+                                <div class="timeline-detail-tag"><i class="ph-fill ph-users-three"></i> ${ev.audiencia || 'Público General'}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        // Renderizar y Descargar
+        Swal.fire({
+            title: 'Generando Reporte...',
+            html: 'Estamos preparando tu cronograma estético.',
+            allowOutsideClick: false,
+            didOpen: () => { Swal.showLoading(); }
+        });
+
+        const renderTarget = document.getElementById('report-render-template');
+        try {
+            const canvas = await html2canvas(renderTarget, {
+                scale: 2, // Alta calidad
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            });
+
+            if (format === 'image') {
+                const link = document.createElement('a');
+                link.download = `Cronograma_Certus_${monthVal}.jpg`;
+                link.href = canvas.toDataURL('image/jpeg', 0.9);
+                link.click();
+            } else {
+                const { jsPDF } = window.jspdf;
+                const orientation = document.querySelector('input[name="report-orientation"]:checked').value;
+                const pdf = new jsPDF(orientation, 'mm', 'a4');
+                const imgData = canvas.toDataURL('image/png');
+                
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                
+                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                pdf.save(`Cronograma_Certus_${monthVal}.pdf`);
+            }
+            Swal.close();
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Reporte generado con éxito', showConfirmButton: false, timer: 3000 });
+        } catch (err) {
+            console.error("Error generating report:", err);
+            Swal.fire('Error', 'No se pudo generar el reporte visual.', 'error');
+        }
+    }
+
+    document.getElementById('btn-generate-report-pdf')?.addEventListener('click', () => generateTimelineReport('pdf'));
+    document.getElementById('btn-generate-report-image')?.addEventListener('click', () => generateTimelineReport('image'));
+
+    // Inicializar
     if (msgTemplateType) {
-        msgTemplateType.dispatchEvent(new Event('change'));
+        refreshTemplateUI();
     }
 });
 
