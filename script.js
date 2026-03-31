@@ -787,8 +787,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 <div class="event-actions">
                     ${actionHtml}
-                    <button class="btn-icon small" title="Copiar Enlace de Inscripción" onclick="copyFormLink('${event.id}')"><i class="ph ph-link"></i></button>
-                    <button class="btn-icon small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" title="Copiar Enlace de Asistencia" onclick="copyAsistenciaLink('${event.id}')"><i class="ph ph-clipboard-text"></i></button>
                     <button class="btn-icon small" title="Editar Evento" onclick="editEvent('${encodeURIComponent(JSON.stringify(event))}')"><i class="ph ph-pencil-simple"></i></button>
                     <button class="btn-icon small" title="Eliminar Evento" onclick="deleteEvent('${event.id}')"><i class="ph ph-trash"></i></button>
                 </div>
@@ -1168,8 +1166,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         htmlContent += `<div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
             <button class="btn-primary small" style="background: #3b82f6; border: none;" onclick="downloadEventDetail('${encodeURIComponent(JSON.stringify(eventData))}')"><i class="ph ph-download-simple"></i> Descargar Detalles</button>
-            <button class="btn-secondary small" style="color:#3b82f6; border-color: rgba(59, 130, 246, 0.4);" onclick="copyFormLink('${eventData.id}')"><i class="ph ph-link"></i> Inscripción</button>
-            <button class="btn-secondary small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" onclick="copyAsistenciaLink('${eventData.id}')"><i class="ph ph-clipboard-text"></i> Asistencia</button>
         </div>`;
         htmlContent += `</div>`;
 
@@ -1288,6 +1284,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Is Public Checkbox
         document.getElementById('event-is-public').checked = !!eventData.is_public;
+        // document.getElementById('event-has-certificate').checked = eventData.con_constancia !== false;
 
         // Modality
         document.querySelector(`input[name="modality"][value="${eventData.modalidad}"]`).checked = true;
@@ -1430,12 +1427,17 @@ document.addEventListener('DOMContentLoaded', () => {
             sede: Array.from(document.querySelectorAll('input[name="sede"]:checked')).map(cb => cb.value),
             responsable: Array.from(document.querySelectorAll('input[name="responsable"]:checked')).map(cb => cb.value),
             audience_text: document.getElementById('audience-detail-input') ? document.getElementById('audience-detail-input').value : '',
-            audience: Array.from(document.querySelectorAll('input[name="audience"]:checked')).map(cb => cb.value)
+            audience: Array.from(document.querySelectorAll('input[name="audience"]:checked')).map(cb => cb.value),
+            // has_certificate: document.getElementById('event-has-certificate').checked
         };
         const scheduleRows = document.querySelectorAll('.schedule-row');
         draft.horario = Array.from(scheduleRows).map(row => {
-            const inputs = row.querySelectorAll('input');
-            return { fecha: inputs[0]?.value || '', inicio: inputs[1]?.value || '', fin: inputs[2]?.value || '' };
+            const inputs = row.querySelectorAll('input[type="date"], input[type="time"]');
+            return { 
+                fecha: inputs[0]?.value || '', 
+                inicio: inputs[1]?.value || '', 
+                fin: inputs[2]?.value || '' 
+            };
         });
         localStorage.setItem('draft_event_form', JSON.stringify(draft));
     }
@@ -1464,6 +1466,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (typeof toggleDeletePonenteBtn === 'function') toggleDeletePonenteBtn();
 
             document.getElementById('event-is-public').checked = !!draft.is_public;
+            // document.getElementById('event-has-certificate').checked = draft.has_certificate !== false;
 
             if (draft.modalidad) {
                 const modInput = document.querySelector(`input[name="modality"][value="${draft.modalidad}"]`);
@@ -1588,7 +1591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build Schedule JSON
         const scheduleRows = document.querySelectorAll('.schedule-row');
         const schedule = Array.from(scheduleRows).map(row => {
-            const inputs = row.querySelectorAll('input');
+            const inputs = row.querySelectorAll('input[type="date"], input[type="time"]');
             return {
                 fecha: inputs[0].value,
                 inicio: inputs[1].value,
@@ -1616,7 +1619,8 @@ document.addEventListener('DOMContentLoaded', () => {
             modalidad: document.querySelector('input[name="modality"]:checked').value,
             sedes: sedes,
             horario: JSON.stringify(schedule),
-            audiencia: audText
+            audiencia: audText,
+            // con_constancia: document.getElementById('event-has-certificate') ? document.getElementById('event-has-certificate').checked : true
         };
 
         if (!currentEditEventId) {
@@ -1711,7 +1715,10 @@ document.addEventListener('DOMContentLoaded', () => {
             label: 'Planificado',
             req: [
                 { id: 'coordinado_ponente', label: '¿Ha coordinado con el ponente?' },
-                { id: 'aceptado_ponente', label: '¿Ha aceptado el ponente?' }
+                { id: 'aceptado_ponente', label: '¿Ha aceptado el ponente?' },
+                { id: 'crear_carpeta_drive', label: 'Crear carpeta del evento y formularios (Inscripción y Asistencia)', type: 'action_drive_manual', target: 'https://drive.google.com/drive/folders/1nyN81gZicYLBW6RyEHb_wZmEQoyqutps?usp=drive_link' },
+                { id: 'form_inscripcion_url', label: 'Link Formulario de Inscripción', type: 'action_input_link', placeholder: 'Pega el link del formulario de inscripción aquí' },
+                { id: 'form_asistencia_url', label: 'Link Formulario de Asistencia', type: 'action_input_link', placeholder: 'Pega el link del formulario de asistencia aquí' }
             ]
         },
         {
@@ -1813,10 +1820,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         infoDiv.innerHTML = `<h3>${eventData.nombre}</h3>
         <p style="color:var(--text-muted)">${eventData.tipo} - ${eventData.modalidad}</p>
-        <div style="margin-top: 10px; display: flex; gap: 10px;">
-            <button class="btn-secondary small" style="color:#3b82f6; border-color: rgba(59, 130, 246, 0.4);" onclick="copyFormLink('${eventData.id}')"><i class="ph ph-link"></i> Inscripción</button>
-            <button class="btn-secondary small" style="color:#10b981; border-color: rgba(16, 185, 129, 0.4);" onclick="copyAsistenciaLink('${eventData.id}')"><i class="ph ph-clipboard-text"></i> Asistencia</button>
-        </div>
         ${ponenteHtml}`;
 
         // Initialize Select2 array logic
@@ -1944,9 +1947,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     // --- NUEVA LÓGICA: Preguntas Personalizadas Sí/No (JSONB Persistente) ---
                     let reqData = {};
                     try {
-                        reqData = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
+                        if (typeof eventData.requisitos === 'string' && eventData.requisitos.trim().length > 0) {
+                            reqData = JSON.parse(eventData.requisitos);
+                        } else {
+                            reqData = eventData.requisitos || {};
+                        }
                         window.currentEventRequisitos = reqData;
-                    } catch (e) { }
+                    } catch (e) {
+                        console.error("Error parsing requisitos:", e);
+                        reqData = {};
+                        window.currentEventRequisitos = {};
+                    }
 
                     const evaluateAdvanceButton = () => {
                         let ok = true;
@@ -1963,22 +1974,19 @@ document.addEventListener('DOMContentLoaded', () => {
                                 } else if (typeof reqData[r.id] !== 'string' || reqData[r.id].trim() === '') {
                                     ok = false;
                                 }
-                            } else if (r.type !== 'action_drive' && r.type !== 'action_draft' && r.type !== 'action_link' && r.type !== 'action_download_image' && r.type !== 'action_draft_invite' && r.type !== 'action_draft_reminder') {
-                                // Default checkbox logic
+                            } else if (r.type === 'action_drive') {
+                                if (!reqData.folder_url && reqData[r.id] !== true) ok = false;
+                            } else if (r.type && r.type.startsWith('action_')) {
+                                // action_drive_manual, action_draft, action_link, action_download_image, action_draft_invite, etc.
+                                // are essentially action buttons that do not block progress unless handled above (like action_drive or action_input_link)
+                            } else {
+                                // Default checkbox logic (no type defined or not an action_ type)
                                 if (isInterno && (currentStep === 2 || currentStep === 4 || currentStep === 5)) {
                                     // Fase 2, 4 y 5 son opcionales para internos
                                 } else if (isInterno && (r.id === 'solicitado_foto' || r.id === 'compartido_asistencia' || r.id === 'borrador_constancias' || r.id === 'enviado_constancias')) {
                                     // Foto, Asistencia, Borrador y Envío de Constancias son opcionales para internos
                                 } else if (reqData[r.id] !== true) {
                                     ok = false;
-                                }
-                            } else if (r.type === 'action_drive') {
-                                if (!reqData.folder_url && reqData[r.id] !== true) ok = false;
-                            } else if (r.type === 'action_draft' || r.type === 'action_link') {
-                                if (isInterno && currentStep === 2) {
-                                    // Botones de fase 2 opcionales para internos
-                                } else if (reqData[r.id] !== true) {
-                                    // Algunos botones pueden ser obligatorios si no son omitidos por reglas anteriores
                                 }
                             }
                         });
@@ -2000,8 +2008,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
 
                     configForCurrent.req.forEach(r => {
-                        // User request: omit certificates draft and sent confirmation for internal events
+                        // User request: omit certificates draft and sent confirmation for internal events or if disabled
                         if (isInterno && (r.id === 'borrador_constancias' || r.id === 'enviado_constancias')) return;
+
+                        // NEW: Hide communication draft for internal events
+                        if (isInterno && r.type === 'action_draft') return;
 
                         const li = document.createElement('li');
                         li.style.display = 'flex';
@@ -2130,7 +2141,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                             const base64Str = canvas.toDataURL('image/jpeg', 0.85);
 
                                             reqData[r.id] = base64Str;
+                                            eventData.requisitos = reqData; // Sync local state
                                             await updateReqsInDB(reqData);
+                                            // The UI is updated by showing "Ver" etc.
+                                            // For complex UI changes, openStatusModal is safer here.
                                             window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
                                         };
                                         img.onerror = function () {
@@ -2213,6 +2227,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     });
                                     if (result.isConfirmed) {
                                         reqData[r.id] = false;
+                                        eventData.requisitos = reqData; // Sync local state
                                         await updateReqsInDB(reqData);
                                         window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
                                     }
@@ -2224,15 +2239,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         // --- SPECIAL LOGIC FOR ACTION_DOWNLOAD_IMAGE ---
                         else if (r.type === 'action_download_image') {
-                            const fotoUrl = window.currentEventRequisitos && window.currentEventRequisitos['cargar_foto'];
-                            const isDisabled = typeof fotoUrl !== 'string' || (!fotoUrl.startsWith('http') && !fotoUrl.startsWith('data:image'));
+                            const fotoUrl = (window.currentEventRequisitos && window.currentEventRequisitos['cargar_foto']) || (reqData && reqData['cargar_foto']);
+                            const isDisabled = !fotoUrl;
 
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
-                                    <button class="btn-primary" id="btn-dw-${r.id}" ${isDisabled ? 'disabled' : ''} style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; ${isDisabled ? 'opacity: 0.5; cursor: not-allowed;' : ''}">
+                                    <button class="btn-primary" id="btn-dw-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;" ${isDisabled ? 'disabled' : ''}>
                                         <i class="ph ph-download-simple"></i> Ver / Descargar
                                     </button>
                                 </div>
@@ -2240,7 +2255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             reqList.appendChild(li);
 
                             if (!isDisabled) {
-                                li.querySelector(`#btn-dw-${r.id}`).addEventListener('click', () => {
+                                li.querySelector(`#btn-dw-${r.id}`).addEventListener('click', async () => {
                                     if (fotoUrl.startsWith('data:image')) {
                                         const a = document.createElement('a');
                                         a.href = fotoUrl;
@@ -2250,36 +2265,49 @@ document.addEventListener('DOMContentLoaded', () => {
                                         window.open(fotoUrl, '_blank');
                                     }
                                     reqData[r.id] = true;
-                                    updateReqsInDB(reqData);
+                                    eventData.requisitos = reqData; // Sync local state
+                                    await updateReqsInDB(reqData);
                                     window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
                                 });
                             }
+
                             // Solo es obligatorio si no se ha validado (se valida al hacer clic)
                             if (reqData[r.id] !== true) isStepCompletable = false;
-
                             return;
                         }
 
                         // --- SPECIAL LOGIC FOR ACTION_DRAFT_INVITE ---
                         else if (r.type === 'action_draft_invite') {
+                            const val = reqData[r.id];
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
                                     <button class="btn-secondary" id="btn-dinv-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
-                                        <i class="ph ph-envelope-simple-open"></i> Generar Invitación
+                                        <i class="ph ph-envelope-simple-open"></i> Borrador
                                     </button>
                                 </div>
                             `;
                             reqList.appendChild(li);
 
+                            const applyStylesDraft = (stateVal) => {
+                                // No toggles to style anymore
+                            };
+                            applyStylesDraft(val);
+
                             li.querySelector(`#btn-dinv-${r.id}`).addEventListener('click', () => {
-                                let formLinkTexto = "[Link no encontrado, actualiza la etapa 1]";
+                                let formLinkTexto = "[Enlace no detectado, actualiza el Paso 3]";
                                 try {
                                     const reqObj = window.currentEventRequisitos || {};
                                     if (reqObj.form_inscripcion_url) {
                                         formLinkTexto = reqObj.form_inscripcion_url;
+                                    } else if (reqObj.prog_zoom_meet) {
+                                        formLinkTexto = reqObj.prog_zoom_meet;
+                                    } else {
+                                        const reqDB = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
+                                        if (reqDB.form_inscripcion_url) formLinkTexto = reqDB.form_inscripcion_url;
+                                        else if (reqDB.prog_zoom_meet) formLinkTexto = reqDB.prog_zoom_meet;
                                     }
                                 } catch (e) { }
 
@@ -2317,8 +2345,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 });
 
                                 reqData[r.id] = true;
+                                eventData.requisitos = reqData; // Sync local state
+                                applyStylesDraft(true);
+                                evaluateAdvanceButton();
                                 updateReqsInDB(reqData);
-                                window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
                             });
 
                             // Se valida al hacer clic
@@ -2432,12 +2462,57 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                        </div>
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes" data-id="borrador_constancias">
+                                        <span class="lbl-yes-txt" style="font-weight: 500;">Sí</span>
+                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </label>
                                     <button class="btn-secondary" id="btn-cert-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
-                                        <i class="ph ph-certificate"></i> Generar Borrador
+                                        <i class="ph ph-certificate"></i> Borrador
                                     </button>
                                 </div>
                             `;
                             reqList.appendChild(li);
+
+                            const lblNoTxt = li.querySelector('.lbl-no-txt');
+                            const lblYesTxt = li.querySelector('.lbl-yes-txt');
+                            const boxNo = li.querySelector('.no-box');
+                            const boxYes = li.querySelector('.yes-box');
+                            const noIcon = li.querySelector('.no-icon');
+                            const yesIcon = li.querySelector('.yes-icon');
+                            const lblNoContainer = li.querySelector('.custom-lbl-no');
+                            const lblYesContainer = li.querySelector('.custom-lbl-yes');
+
+                            const applyStylesDraft = (stateVal) => {
+                                lblYesTxt.style.color = '#64748b';
+                                boxYes.style.borderColor = '#475569'; boxYes.style.background = 'transparent'; yesIcon.style.opacity = '0';
+                                lblNoTxt.style.color = '#64748b';
+                                boxNo.style.borderColor = '#475569'; boxNo.style.background = 'transparent'; noIcon.style.opacity = '0';
+                                if (stateVal === true) {
+                                    lblYesTxt.style.color = '#64748b';
+                                    boxYes.style.borderColor = '#10b981'; boxYes.style.background = 'transparent';
+                                    yesIcon.style.opacity = '1'; yesIcon.style.color = '#10b981';
+                                } else if (stateVal === false || stateVal === undefined) {
+                                    lblNoTxt.style.color = '#ef4444';
+                                    boxNo.style.borderColor = 'rgba(239, 68, 68, 0.4)'; boxNo.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    noIcon.style.opacity = '1'; noIcon.style.color = '#ef4444';
+                                }
+                            };
+                            applyStylesDraft(val);
+
+                            lblNoContainer.addEventListener('click', () => {
+                                reqData[r.id] = false; applyStylesDraft(false); evaluateAdvanceButton(); updateReqsInDB(reqData);
+                            });
+                            lblYesContainer.addEventListener('click', () => {
+                                reqData[r.id] = true; applyStylesDraft(true); evaluateAdvanceButton(); updateReqsInDB(reqData);
+                            });
 
                             li.querySelector(`#btn-cert-${r.id}`).addEventListener('click', async (e) => {
                                 const btn = e.currentTarget;
@@ -2446,10 +2521,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Cargando...`;
 
                                 try {
-                                    const reqObj = window.currentEventRequisitos || {};
-
                                     const { data: dbParticipants, error } = await window.supabaseClient
-                                        .from('participantes')
+                                        .from('asistencias')
                                         .select('id, asistencia')
                                         .eq('evento_id', eventData.id);
 
@@ -2458,16 +2531,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                     const asistentes = dbParticipants ? dbParticipants.filter(p => p.asistencia === true) : [];
 
                                     if (asistentes.length === 0) {
-                                        Swal.fire('Sin Asistentes', 'No hay ningún participante marcado con asistencia en este evento. No se generarán constancias para enviar.', 'warning');
+                                        Swal.fire('Sin Asistentes', 'No hay ningún participante marcado con asistencia. No se pueden generar constancias.', 'warning');
                                     }
 
-                                    // 3. Abrir Modal de Borrador de Constancias
                                     window.openCertificatesDraftModal(eventData, reqData);
-
-                                    // Marcar como completado
+                                    
                                     reqData[r.id] = true;
-                                    await updateReqsInDB(reqData);
-                                    window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                    eventData.requisitos = JSON.stringify(reqData); // Sync local state
+                                    applyStylesDraft(true);
+                                    evaluateAdvanceButton();
+                                    updateReqsInDB(reqData);
 
                                 } catch (error) {
                                     console.error(error);
@@ -2489,12 +2562,57 @@ document.addEventListener('DOMContentLoaded', () => {
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-no">
+                                        <span class="lbl-no-txt" style="font-weight: 500;">No</span>
+                                        <div class="custom-cb-box no-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="no-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                        </div>
+                                    </label>
+                                    <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.9rem; transition: color 0.2s;" class="custom-lbl-yes" data-id="borrador_recordatorio">
+                                        <span class="lbl-yes-txt" style="font-weight: 500;">Sí</span>
+                                        <div class="custom-cb-box yes-box" style="width: 24px; height: 24px; border-radius: 6px; display:inline-flex; align-items:center; justify-content:center; transition: all 0.2s; border: 1.5px solid #475569;">
+                                            <svg class="yes-icon" style="width:14px; height:14px; opacity:0; transition: opacity 0.2s;" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+                                        </div>
+                                    </label>
                                     <button class="btn-secondary" id="btn-drem-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
-                                        <i class="ph ph-envelope-simple"></i> Generar Borrador
+                                        <i class="ph ph-envelope-simple"></i> Borrador
                                     </button>
                                 </div>
                             `;
                             reqList.appendChild(li);
+
+                            const lblNoTxt = li.querySelector('.lbl-no-txt');
+                            const lblYesTxt = li.querySelector('.lbl-yes-txt');
+                            const boxNo = li.querySelector('.no-box');
+                            const boxYes = li.querySelector('.yes-box');
+                            const noIcon = li.querySelector('.no-icon');
+                            const yesIcon = li.querySelector('.yes-icon');
+                            const lblNoContainer = li.querySelector('.custom-lbl-no');
+                            const lblYesContainer = li.querySelector('.custom-lbl-yes');
+
+                            const applyStylesDraft = (stateVal) => {
+                                lblYesTxt.style.color = '#64748b';
+                                boxYes.style.borderColor = '#475569'; boxYes.style.background = 'transparent'; yesIcon.style.opacity = '0';
+                                lblNoTxt.style.color = '#64748b';
+                                boxNo.style.borderColor = '#475569'; boxNo.style.background = 'transparent'; noIcon.style.opacity = '0';
+                                if (stateVal === true) {
+                                    lblYesTxt.style.color = '#64748b';
+                                    boxYes.style.borderColor = '#10b981'; boxYes.style.background = 'transparent';
+                                    yesIcon.style.opacity = '1'; yesIcon.style.color = '#10b981';
+                                } else if (stateVal === false || stateVal === undefined) {
+                                    lblNoTxt.style.color = '#ef4444';
+                                    boxNo.style.borderColor = 'rgba(239, 68, 68, 0.4)'; boxNo.style.background = 'rgba(239, 68, 68, 0.2)';
+                                    noIcon.style.opacity = '1'; noIcon.style.color = '#ef4444';
+                                }
+                            };
+                            applyStylesDraft(val);
+
+                            lblNoContainer.addEventListener('click', () => {
+                                reqData[r.id] = false; eventData.requisitos = reqData; applyStylesDraft(false); evaluateAdvanceButton(); updateReqsInDB(reqData);
+                            });
+                            lblYesContainer.addEventListener('click', () => {
+                                reqData[r.id] = true; eventData.requisitos = reqData; applyStylesDraft(true); evaluateAdvanceButton(); updateReqsInDB(reqData);
+                            });
 
                             li.querySelector(`#btn-drem-${r.id}`).addEventListener('click', async (e) => {
                                 const btn = e.currentTarget;
@@ -2503,35 +2621,31 @@ document.addEventListener('DOMContentLoaded', () => {
                                 btn.innerHTML = `<i class="ph ph-spinner ph-spin"></i> Cargando...`;
 
                                 try {
-                                    // Comprobar si hay inscritos en Supabase
                                     const { data: partData, error } = await window.supabaseClient.from('participantes').select('id').eq('evento_id', eventData.id);
                                     if (error) throw error;
 
-                                    if (!partData || partData.length === 0) {
-                                        Swal.fire('Aviso', 'No hay ningún inscrito registrado en el evento. El recordatorio se generará pero no tendrá destinatarios válidos.', 'info');
+                                    if (partData.length === 0) {
+                                        Swal.fire('Sin Inscritos', 'No hay participantes inscritos en este evento.', 'warning');
                                     }
 
-                                    // 4. Mostrar el Borrador usando el nuevo Modal Custom
                                     window.openReminderDraftModal(eventData, reqData);
 
-                                    // MARCAR COMO COMPLETADO Y REFRESCAR UI
                                     reqData[r.id] = true;
-                                    await updateReqsInDB(reqData);
-                                    window.openStatusModal(encodeURIComponent(JSON.stringify(eventData)));
+                                    eventData.requisitos = JSON.stringify(reqData); // Sync local state
+                                    applyStylesDraft(true);
+                                    evaluateAdvanceButton();
+                                    updateReqsInDB(reqData);
 
                                 } catch (error) {
                                     console.error(error);
-                                    Swal.fire('Error', 'No se pudo generar el borrador: ' + error.message, 'error');
+                                    Swal.fire('Error', error.message, 'error');
                                 } finally {
-                                    if (btn) {
-                                        btn.disabled = false;
-                                        btn.innerHTML = originalHtml;
-                                    }
+                                    btn.disabled = false;
+                                    btn.innerHTML = originalHtml;
                                 }
                             });
 
                             if (reqData[r.id] !== true) isStepCompletable = false;
-
                             return;
                         }
 
@@ -2561,15 +2675,17 @@ document.addEventListener('DOMContentLoaded', () => {
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
                                     <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">Genera el borrador para solicitar la difusión oficial del evento.</p>
                                 </div>
                                 <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
-                                                    <button class="btn-secondary" id="btn-draft-${r.id}" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem;">
-                                                        <i class="ph ph-magic-wand"></i> Generar Borrador
-                                                    </button>
-                                                </div>
-                                            `;
+                                    <button class="btn-secondary" id="btn-draft-${r.id}" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.5rem;">
+                                        <i class="ph ph-magic-wand"></i> Borrador
+                                    </button>
+                                </div>
+                            `;
                             reqList.appendChild(li);
 
+                            // Skip styles and checkbox listeners since they are removed
                             li.querySelector(`#btn-draft-${r.id}`).addEventListener('click', () => {
                                 // Extract phones mapping
                                 const phoneMap = {
@@ -2591,25 +2707,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                 let userPhone = '';
                                 let userEmail = '';
+                                let responsableNombre = '';
                                 if (eventData.responsable) {
-                                    // Pilla el primero
                                     const responsableParts = eventData.responsable.split(',')[0].trim();
                                     userPhone = phoneMap[responsableParts] || '';
                                     userEmail = emailMap[responsableParts] || '[Responsable (correo electrónico)]';
-                                    var responsableNombre = responsableParts;
+                                    responsableNombre = responsableParts;
                                 }
 
-                                // Determinar Sede y Horario
-                                const sedesFormatted = eventData.sedes ? eventData.sedes : 'No asignada';
                                 let eventHorarioStr = '[día o días del evento] y hora';
                                 let plazoEntregaStr = '[calcular...]';
+                                let dateStr = '[fecha]';
+                                let timeStr = '[hora]';
+                                let hrs = [{inicio: '', fin: ''}];
+
                                 try {
                                     const hStr = eventData.horario || '[]';
-                                    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
+                                    hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
                                     if (hrs.length > 0 && hrs[0].fecha) {
                                         let rawDate = hrs[0].fecha;
+                                        dateStr = rawDate;
 
-                                        // Calculate plazo (rawDate - 7 days)
                                         let dateObj = null;
                                         if (rawDate.includes('-') && rawDate.split('-')[0].length === 4) {
                                             const p = rawDate.split('-');
@@ -2624,11 +2742,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                             const pd = String(dateObj.getDate()).padStart(2, '0');
                                             const pm = String(dateObj.getMonth() + 1).padStart(2, '0');
                                             const py = dateObj.getFullYear();
-                                            plazoEntregaStr = `${pd} /${pm}/${py} `;
+                                            plazoEntregaStr = `${pd}/${pm}/${py}`;
                                         }
 
-                                        // Format date YYYY-MM-DD to "DD de Mes del YYYY"
-                                        let dateStr = rawDate;
                                         if (rawDate.includes('-') && rawDate.split('-')[0].length === 4) {
                                             const parts = rawDate.split('-');
                                             const months = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -2636,28 +2752,42 @@ document.addEventListener('DOMContentLoaded', () => {
                                             const monthNum = parseInt(parts[1], 10);
                                             const yearNum = parts[0];
                                             if (monthNum >= 1 && monthNum <= 12) {
-                                                dateStr = `${dayNum} de ${months[monthNum - 1]} del ${yearNum} `;
+                                                dateStr = `${dayNum} de ${months[monthNum - 1]} del ${yearNum}`;
                                             }
                                         }
-                                        eventHorarioStr = `${dateStr} desde las ${hrs[0].inicio || ''} hasta las ${hrs[0].fin || ''} `;
-                                    }
-                                } catch (e) { }
-
-                                const modalModeText = eventData.modalidad === 'Virtual' ? 'a través de Zoom/Meet' : (eventData.modalidad === 'Presencial' ? `en sede ${sedesFormatted} ` : `a través de Zoom/Meet y en sede ${sedesFormatted} `);
-
-                                let formLinkTexto = `[Link del formulario INSCRIPCION AL TALLER VIRTUAL: "${eventData.nombre}" creado en la carpeta]`;
-                                try {
-                                    // El draft se genera en la etapa 2, pero la URL se guardó globalmente en requisitos
-                                    const reqObj = window.currentEventRequisitos || {};
-                                    if (reqObj.form_inscripcion_url) {
-                                        formLinkTexto = reqObj.form_inscripcion_url;
-                                    } else {
-                                        const reqDB = typeof eventData.requisitos === 'string' ? JSON.parse(eventData.requisitos) : (eventData.requisitos || {});
-                                        if (reqDB.form_inscripcion_url) {
-                                            formLinkTexto = reqDB.form_inscripcion_url;
+                                        
+                                        if (hrs[0].inicio && hrs[0].fin) {
+                                            const formatT = (t) => {
+                                                if (!t) return '';
+                                                let [h, m] = t.split(':');
+                                                return `${h}:${m}`;
+                                            };
+                                            const ampm = parseInt(hrs[0].fin.split(':')[0]) >= 12 ? 'p.m.' : 'a.m.';
+                                            timeStr = `${formatT(hrs[0].inicio)} a ${formatT(hrs[0].fin)} ${ampm}`;
                                         }
                                     }
-                                } catch (e) { }
+                                } catch (e) {
+                                    console.error("Error procesando horario para borrador:", e);
+                                }
+
+                                const careerMap = {
+                                    'Finanzas': 'Contabilidad',
+                                    'Comunidad académica': 'Contabilidad y Administración',
+                                    'Administración': 'Administración',
+                                    'Finanzas / Contabilidad': 'Contabilidad',
+                                    'Contabilidad': 'Contabilidad'
+                                };
+                                const careerText = careerMap[eventData.vertical] || 'Contabilidad';
+
+                                const modalModeText = eventData.modalidad === 'Presencial'
+                                    ? `en la sede ${eventData.sedes || 'por definir'}`
+                                    : 'a través de la plataforma Zoom/Google Meet';
+
+                                const formalDraftTemplate = `Invitar a los estudiantes de ${eventData.audiencia || '[Audiencia]'} de la carrera de ${careerText} a participar en el evento académico “${eventData.nombre || '[Nombre del Evento]'}”, que se llevará a cabo el día ${dateStr.trim()}, en el horario de ${timeStr}, ${modalModeText}.
+
+El evento contará con la participación del ponente ${eventData.ponente || '[Ponente]'}. Asimismo, se otorgará constancia de participación a los asistentes inscritos previamente.`;
+
+                                const nativeFormUrl = reqData['form_inscripcion_url'] || '[Link del Formulario No Encontrado]';
 
                                 const draftFields = [
                                     { id: 'draft-f1', label: 'Correo de Jefe Directo', value: 'lhurtadoo@certus.edu.pe', isArea: false },
@@ -2667,27 +2797,31 @@ document.addEventListener('DOMContentLoaded', () => {
                                     { id: 'draft-f5', label: 'Público Objetivo', value: eventData.audiencia || 'Público en General', isArea: false },
                                     { id: 'draft-f6', label: 'Vertical involucrada', value: 'Finanzas', isArea: false },
                                     { id: 'draft-f7', label: 'Tipo de difusión', value: 'Comunicación Interna / Comunicación Digital', isArea: false },
-                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: `Invitar a ${eventData.audiencia || '[público objetivo]'} a participar en el evento "${eventData.nombre}" que se realizará el ${eventHorarioStr} ${modalModeText}, con inscripción previa, incluye constancia de participación, ponente: ${eventData.ponente} `, isArea: true },
-                                    { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: `Link de inscripción: ${formLinkTexto}`, isArea: false },
+                                    { id: 'draft-f8', label: 'Detalles del Pedido', value: formalDraftTemplate, isArea: true },
+                                    { id: 'draft-f8_1', label: 'Enlaces Relacionados', value: `Link de inscripción: ${nativeFormUrl}`, isArea: false },
                                     { id: 'draft-f8_2', label: 'Contacto', value: `Pueden escribir a ${responsableNombre} (${userEmail}) o enviar un whatsapp al ${userPhone || '[numero telefonico]'} `, isArea: false },
                                     { id: 'draft-f9', label: 'Plazo de entrega del pedido', value: plazoEntregaStr, isArea: false },
                                     { id: 'draft-f10', label: 'Urgencia del Pedido', value: 'No', isArea: false }
                                 ];
 
-                                let htmlGrid = '<div style="display: flex; flex-direction: column; gap: 1rem; text-align: left; max-height: 60vh; overflow-y: auto; overflow-x: hidden; padding-right: 15px; width: 100%; box-sizing: border-box;">';
+                                let htmlGrid = `
+                                    <div style="background: rgba(59, 130, 246, 0.05); border-left: 4px solid #3b82f6; padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; text-align: left;">
+                                        <p style="margin: 0; color: #1e3a8a; font-size: 0.95rem; font-weight: 500;">
+                                            <i class="ph ph-info" style="vertical-align: middle; margin-right: 0.5rem; font-size: 1.2rem;"></i>
+                                            Puede utilizar el siguiente borrador para guiarse en el llenado del formulario.
+                                        </p>
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 1rem; text-align: left; max-height: 50vh; overflow-y: auto; overflow-x: hidden; padding-right: 15px; width: 100%; box-sizing: border-box;">
+                                `;
                                 draftFields.forEach(f => {
-                                    let btnExtra = '';
-                                    // El usuario pidió quitar el botón de actualización azul
-
                                     htmlGrid += `
                                         <div style="width: 100%; box-sizing: border-box;">
                                             <label style="font-size: 0.85rem; font-weight: bold; color: #475569; margin-bottom: 0.3rem; display: block;">${f.label}</label>
                                             <div style="display: flex; gap: 8px; align-items: flex-start; width: 100%; box-sizing: border-box;">
                                                 ${f.isArea ?
-                                            `<textarea id="${f.id}" style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; resize: vertical; min-height: 100px; font-family: inherit; box-sizing: border-box; outline: none;">${f.value}</textarea>` :
-                                            `<input type="text" id="${f.id}" value='${f.value}' style="width: calc(100% - ${btnExtra ? '92px' : '46px'}); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; font-family: inherit; box-sizing: border-box; outline: none;">`
+                                            `<textarea id="${f.id}" style="width: calc(100% - 46px); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; resize: vertical; min-height: 100px; font-family: inherit; box-sizing: border-box; outline: none;">${f.value}</textarea>` :
+                                            `<input type="text" id="${f.id}" value='${f.value}' style="width: calc(100% - 46px); padding: 0.6rem; border-radius: 6px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; font-size: 0.95rem; font-family: inherit; box-sizing: border-box; outline: none;">`
                                         }
-                                                ${btnExtra}
                                                 <button class="btn-copy-field" data-target="${f.id}" style="width: 38px; height: 38px; min-width: 38px; border-radius: 6px; background: #e2e8f0; border: 1px solid #cbd5e1; color: #475569; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; padding: 0; box-sizing: border-box;" title="Copiar este campo" onmouseover="this.style.background='#cbd5e1'; this.style.color='#1e293b';" onmouseout="this.style.background='#e2e8f0'; this.style.color='#475569';">
                                                     <i class="ph ph-copy" style="font-size: 1.2rem; pointer-events: none;"></i>
                                                 </button>
@@ -2773,6 +2907,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 });
 
                                 reqData[r.id] = true;
+                                eventData.requisitos = reqData; // Sync local state
+                                applyStylesDraft(true);
+                                evaluateAdvanceButton();
+                                updateReqsInDB(reqData);
                             });
                             return;
                         }
@@ -2807,15 +2945,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                         const box = document.getElementById(`verify-drive-box-${r.id}`);
                                         if (box) {
                                             if (result.status === "ok" && result.exists === true) {
-                                                if (result.form_inscripcion_url) {
+                                                if (result.form_inscripcion_url && !reqData.form_inscripcion_url) {
                                                     reqData.form_inscripcion_url = result.form_inscripcion_url;
                                                 }
-                                                if (result.form_asistencia_url) {
+                                                if (result.form_asistencia_url && !reqData.form_asistencia_url) {
                                                     reqData.form_asistencia_url = result.form_asistencia_url;
                                                 }
                                                 box.innerHTML = `
-                                                    <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA CREADA</span>
-                                                    <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ir a carpeta</a>
+                                                    <span style="color: #10b981; font-weight: bold; font-size: 0.85rem;"><i class="ph ph-check-circle"></i> CARPETA DETECTADA</span>
+                                                    <a href="${reqData.folder_url}" target="_blank" class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem;"><i class="ph ph-folder-open"></i> Ver carpeta</a>
                                                 `;
                                                 reqData[r.id] = true;
                                                 await updateReqsInDB(reqData); // Ensure URL saves even if already exist
@@ -2996,7 +3134,22 @@ document.addEventListener('DOMContentLoaded', () => {
                             });
 
                             return; // Stop normal logic
+                        } else if (r.type === 'action_drive_manual') {
+                            li.innerHTML = `
+                                <div style="flex:1; padding-right: 15px;">
+                                    <label style="font-size: 0.95rem; color: #cbd5e1; user-select: none;">${r.label}</label>
+                                    <p style="font-size: 0.8rem; color: #94a3b8; margin-top: 4px;">Abre la carpeta maestra, crea la carpeta del evento y los formularios (Inscripción y Asistencia) manualmente. Luego pega los links abajo.</p>
+                                </div>
+                                <div style="display: flex; gap: 15px; align-items: center; user-select: none;">
+                                    <a href="${r.target}" target="_blank" class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.5rem; text-decoration: none; background: #4285F4;">
+                                        <i class="ph ph-google-drive-logo"></i> Abrir Carpeta Maestra
+                                    </a>
+                                </div>
+                            `;
+                            reqList.appendChild(li);
+                            return;
                         } else {
+                            const val = reqData[r.id];
                             // --- NORMAL YES/NO CHECKBOXES ---
                             li.innerHTML = `
                                 <div style="flex:1; padding-right: 15px;">
@@ -3019,14 +3172,14 @@ document.addEventListener('DOMContentLoaded', () => {
                                         </div>
                                     </label>
                                     ${(r.id === 'comunicado_delegados') ?
-                                    `<a href="formulario.html?id=${eventData.id}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Inscripción">
-                                            <i class="ph ph-eye"></i> Form
-                                        </a>` : ''
+                                    `<button onclick="window.open('${reqData.form_inscripcion_url || '#'}', '_blank')" class="btn-primary" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; margin-left: 8px; background: #6366f1;" title="Ver Formulario de Inscripción" ${!reqData.form_inscripcion_url ? 'disabled' : ''}>
+                                            <i class="ph ph-note-pencil"></i> Form
+                                        </button>` : ''
                                 }
                                     ${(r.id === 'compartido_asistencia') ?
-                                    `<a href="asistencia.html?id=${eventData.id}" target="_blank" class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; border-radius: 4px; display:inline-flex; align-items:center; gap: 0.3rem; margin-left: 5px;" title="Ver Formulario de Asistencia">
-                                            <i class="ph ph-eye"></i> Form
-                                        </a>` : ''
+                                    `<button onclick="window.open('${reqData.form_asistencia_url || '#'}', '_blank')" class="btn-primary" style="padding: 0.35rem 0.7rem; font-size: 0.8rem; border-radius: 6px; display:inline-flex; align-items:center; gap: 0.4rem; margin-left: 8px; background: #6366f1;" title="Ver Formulario de Asistencia" ${!reqData.form_asistencia_url ? 'disabled' : ''}>
+                                            <i class="ph ph-note-pencil"></i> Form
+                                        </button>` : ''
                                 }
                                 </div>
                             `;
@@ -3068,6 +3221,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             // Attach listeners
                             lblNoContainer.addEventListener('click', () => {
                                 reqData[r.id] = false;
+                                eventData.requisitos = JSON.stringify(reqData); // Sync local state
                                 applyStyles(false);
                                 evaluateAdvanceButton();
                                 updateReqsInDB(reqData);
@@ -3075,6 +3229,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             lblYesContainer.addEventListener('click', () => {
                                 reqData[r.id] = true;
+                                eventData.requisitos = JSON.stringify(reqData); // Sync local state
                                 applyStyles(true);
                                 evaluateAdvanceButton();
                                 updateReqsInDB(reqData);
@@ -3440,6 +3595,8 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         }
 
+        console.log("📤 Enviando a Google Sheets:", webhookPayload);
+
         try {
             await fetch(GOOGLE_APP_SCRIPT_WEBHOOK_URL, {
                 method: "POST",
@@ -3447,11 +3604,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers: { "Content-Type": "text/plain" },
                 body: JSON.stringify(webhookPayload)
             });
-            console.log("✅ Sync To Sheets successful for action:", action);
+            console.log("✅ Petición enviada a Google Apps Script para acción:", action);
         } catch (e) {
             console.error("❌ Error en webhook de Google Sheets:", e);
+            Swal.fire({
+                toast: true,
+                position: 'top-end',
+                icon: 'error',
+                title: 'Error de conexión con Google Sheets',
+                showConfirmButton: false,
+                timer: 3000
+            });
         }
     }
+
+
 
 
     // --- CSV IMPORT LOGIC ---
@@ -4672,9 +4839,6 @@ function renderReviewTable(participants) {
             rowHtml += `
                 <td><span class="status-badge ${validation.isValid ? 'ok' : 'error'}">${validation.isValid ? 'OK' : 'Obs'}</span></td>
                 <td style="display: flex; gap: 4px;">
-                    <button type="button" class="btn-icon" title="Previsualizar Constancia" onclick="previewSingleCertLocal(${index})">
-                        <i class="ph ph-eye"></i>
-                    </button>
                     <button type="button" class="btn-icon-remove" title="Eliminar" onclick="deleteSingleParticipant(${index})">
                         <i class="ph ph-trash"></i>
                     </button>
@@ -4689,6 +4853,39 @@ function renderReviewTable(participants) {
     document.getElementById('ok-participants').innerText = okCount;
     document.getElementById('obs-participants').innerText = obsCount;
 }
+
+// --- FILTROS DE REVISIÓN ---
+window.filterReviewTable = function () {
+    const query = (document.getElementById('review-search')?.value || "").toLowerCase();
+    const showOnlyObs = document.getElementById('filter-obs-only')?.checked;
+    const participants = window.currentParticipantsData || [];
+
+    const filtered = participants.filter(p => {
+        const matchQuery = !query || 
+            (p.dni || "").includes(query) || 
+            (p.nombres || "").toLowerCase().includes(query) || 
+            (p.apellidos || "").toLowerCase().includes(query);
+            
+        if (!matchQuery) return false;
+        
+        if (showOnlyObs) {
+            const validation = validateParticipant(p);
+            return !validation.isValid;
+        }
+        
+        return true;
+    });
+
+    renderReviewTable(filtered);
+}
+
+// Limpiar filtros al abrir
+const originalOpenReview = window.openParticipantReviewModal;
+window.openParticipantReviewModal = async function(eventId, showOnlyAttendees) {
+    if (document.getElementById('review-search')) document.getElementById('review-search').value = "";
+    if (document.getElementById('filter-obs-only')) document.getElementById('filter-obs-only').checked = false;
+    return originalOpenReview(eventId, showOnlyAttendees);
+};
 
 // --- Nuevas funciones de gestión de participantes ---
 
@@ -4732,8 +4929,9 @@ async function deleteSingleParticipant(index) {
 
     if (result.isConfirmed) {
         try {
+            const tableName = window.showingOnlyAttendeesInModal ? 'asistencias' : 'participantes';
             const { error } = await window.supabaseClient
-                .from('participantes')
+                .from(tableName)
                 .delete()
                 .eq('id', participant.id);
 
@@ -4770,8 +4968,9 @@ async function deleteSelectedParticipants() {
 
     if (result.isConfirmed) {
         try {
+            const tableName = window.showingOnlyAttendeesInModal ? 'asistencias' : 'participantes';
             const { error } = await window.supabaseClient
-                .from('participantes')
+                .from(tableName)
                 .delete()
                 .in('id', idsToDelete);
 
@@ -4933,11 +5132,9 @@ function validateParticipant(p) {
     const dniRaw = p.dni ? p.dni.toString().trim() : '';
     const isDniValid = dniRaw.length === 8 && /^\d+$/.test(dniRaw);
 
-    // Validación de correo con dominios permitidos
+    // Validación de correo básica
     const emailRaw = p.correo ? p.correo.toString().trim().toLowerCase() : '';
-    const allowedDomains = ['@gmail.com', '@hotmail.com', '@certus.edu.pe', '@outlook.com', '@yahoo.com'];
-    const hasAllowedDomain = allowedDomains.some(domain => emailRaw.endsWith(domain));
-    const isEmailValid = emailRaw.includes('@') && emailRaw.includes('.') && hasAllowedDomain;
+    const isEmailValid = emailRaw.includes('@') && emailRaw.includes('.') && emailRaw.length > 5;
 
     const errors = {
         dni: !isDniValid,
@@ -4979,8 +5176,8 @@ document.getElementById('btn-save-participants').addEventListener('click', async
     btn.disabled = true;
 
     try {
-        // Limpieza de nombres y DNI antes de guardar - Excluir ID para evitar conflictos de restricción
-        const dataToUpsert = (window.currentParticipantsData || []).map(p => {
+        // 1. Limpieza inicial
+        const rawPayload = (window.currentParticipantsData || []).map(p => {
             let nombres = (p.nombres || "").trim();
             let apellidos = (p.apellidos || "").trim();
 
@@ -4991,11 +5188,12 @@ document.getElementById('btn-save-participants').addEventListener('click', async
             }
 
             return {
+                id: p.id, // Incluir ID para que actualice la fila correcta si cambió el DNI
                 evento_id: parseInt(window.currentEventIdForReview),
-                dni: p.dni,
+                dni: (p.dni || "").toString().trim(),
                 nombres,
                 apellidos,
-                correo: p.correo,
+                correo: (p.correo || "").trim(),
                 telefono: p.telefono,
                 categoria: p.categoria,
                 turno: p.turno,
@@ -5005,11 +5203,22 @@ document.getElementById('btn-save-participants').addEventListener('click', async
             };
         });
 
-        console.log("Upserting payload:", dataToUpsert);
+        // 2. DEDUPLICACIÓN: Evitar error "cannot affect row a second time"
+        const cleanPayload = [];
+        const seenDnis = new Set();
+        for (const item of rawPayload) {
+            if (!item.dni) continue;
+            if (!seenDnis.has(item.dni)) {
+                cleanPayload.push(item);
+                seenDnis.add(item.dni);
+            }
+        }
+
+        console.log("Upserting clean payload:", cleanPayload);
 
         const { error } = await window.supabaseClient
             .from('participantes')
-            .upsert(dataToUpsert, { onConflict: 'dni, evento_id' });
+            .upsert(cleanPayload, { onConflict: 'dni, evento_id' });
 
         if (error) throw error;
 
@@ -5033,13 +5242,31 @@ function openReminderDraftModal(eventData, reqData) {
 
     // Formatear fechas
     let fechasFormateadas = "[Fecha no disponible]";
-    const hStr = eventData.horario || '[]';
-    const hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
+    let hrs = [];
+    try {
+        const hStr = eventData.horario || '[]';
+        hrs = typeof hStr === 'string' ? JSON.parse(hStr) : hStr;
+        if (!Array.isArray(hrs)) hrs = [];
+    } catch (e) {
+        console.error("Error parsing horario:", e);
+        hrs = [];
+    }
+
     const fechasArr = [];
     for (const h of hrs) {
-        if (h.fecha) {
-            const [yyyy, mm, dd] = h.fecha.split('-');
-            let ft = `${dd}/${mm}/${yyyy}`;
+        if (h && h.fecha) {
+            const parts = h.fecha.split(/[-/]/);
+            let ft = "";
+            if (parts.length === 3) {
+                const [p1, p2, p3] = parts;
+                const dd = p1.length === 4 ? p3 : p1;
+                const mm = p2;
+                const yyyy = p1.length === 4 ? p1 : p3;
+                ft = `${dd.padStart(2, '0')}/${mm.padStart(2, '0')}/${yyyy}`;
+            } else {
+                ft = h.fecha;
+            }
+            
             if (h.inicio && h.fin) ft += ` desde las ${h.inicio} hasta las ${h.fin}`;
             else if (h.inicio) ft += ` desde las ${h.inicio}`;
             fechasArr.push(ft);
@@ -5153,12 +5380,18 @@ function openReminderDraftModal(eventData, reqData) {
             cancelButtonText: 'Cancelar'
         });
         if (url !== undefined) {
-            if (url.trim()) {
-                linkReunion = url.trim();
-                textField.innerHTML = renderHtmlDraft(linkReunion);
-                updateLinkButtons();
-                reqData.prog_zoom_meet = linkReunion;
-                updateReqsInDB(reqData);
+            linkReunion = url;
+            updateLinkButtons();
+            textField.innerHTML = renderHtmlDraft(url);
+            
+            // Mark as "Sí" and update DB
+            if (window.currentEventRequisitos) {
+                window.currentEventRequisitos.prog_zoom_meet = url;
+                window.currentEventRequisitos.borrador_recordatorio = true;
+                
+                // Update specific UI in Status Modal if open
+                const yesLbl = document.querySelector('#status-modal .custom-lbl-yes[data-id="borrador_recordatorio"]');
+                if (yesLbl) yesLbl.click(); // This will trigger applyStyles, evaluateAdvanceButton, and updateReqsInDB
             }
         }
     };
@@ -5201,9 +5434,28 @@ function openReminderDraftModal(eventData, reqData) {
     const btnReview = document.getElementById('btn-open-review-from-draft');
     btnReview.onclick = () => window.openParticipantReviewModal(eventData.id, false);
 
-    // Asegurar que el modal de revisión esté por encima del borrador
-    document.getElementById('participant-review-modal').style.zIndex = "2100";
-    modal.style.zIndex = "2000";
+    // La gestión de zIndex ahora se realiza vía CSS para mayor consistencia
+    // document.getElementById('participant-review-modal').style.zIndex = "3300";
+    // modal.style.zIndex = "3200";
+
+    // Copy and Mark as Done
+    const btnCopy = document.getElementById('btn-copy-reminder-html');
+    if (btnCopy) {
+        btnCopy.addEventListener('click', () => {
+            const range = document.createRange();
+            range.selectNode(textField);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            
+            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Copiado al portapapeles', showConfirmButton: false, timer: 1500 });
+            
+            // Mark as "Sí"
+            const yesLbl = document.querySelector('#status-modal .custom-lbl-yes[data-id="borrador_recordatorio"]');
+            if (yesLbl) yesLbl.click();
+        });
+    }
 
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
@@ -5255,11 +5507,13 @@ function openCertificatesDraftModal(eventData, reqData) {
 
     // Configurar botón de revisión
     const btnReview = document.getElementById('btn-open-review-from-cert');
-    btnReview.onclick = () => window.openParticipantReviewModal(eventData.id, true);
+    if (btnReview) {
+        btnReview.onclick = () => window.openParticipantReviewModal(eventData.id, true);
+    }
 
-    // Z-Index
-    document.getElementById('participant-review-modal').style.zIndex = "2100";
-    modal.style.zIndex = "2000";
+    // El z-index se maneja globalmente en CSS
+    // document.getElementById('participant-review-modal').style.zIndex = "3300";
+    // modal.style.zIndex = "3200";
 
     modal.classList.add('active');
     modal.setAttribute('aria-hidden', 'false');
@@ -5691,12 +5945,11 @@ window.confirmSelectedAsistentes = async function () {
     });
 
     try {
-        // Preparar payload con limpieza de nombres y upsert
-        const payload = participants.map(p => {
+        // 1. Preparar payload con limpieza y DEDUPLICACIÓN
+        const rawPayload = participants.map(p => {
             let nombres = (p.nombres || "").trim();
             let apellidos = (p.apellidos || "").trim();
 
-            // Corrección dinámica de nombres si vienen juntos (ej: "Apellidos, Nombres")
             if (!apellidos && nombres.includes(',')) {
                 const parts = nombres.split(',');
                 apellidos = parts[0].trim();
@@ -5704,11 +5957,12 @@ window.confirmSelectedAsistentes = async function () {
             }
 
             return {
+                id: p.id,
                 evento_id: parseInt(window.currentEventIdForReview),
-                dni: p.dni,
+                dni: (p.dni || "").toString().trim(),
                 nombres: nombres,
                 apellidos: apellidos,
-                correo: p.correo,
+                correo: (p.correo || "").trim(),
                 telefono: p.telefono,
                 turno: p.turno,
                 ciclo: p.ciclo,
@@ -5718,10 +5972,20 @@ window.confirmSelectedAsistentes = async function () {
             };
         });
 
-        // 1. Upsert en Supabase (DNI + evento_id como clave única)
+        const cleanPayload = [];
+        const seenDnis = new Set();
+        for (const item of rawPayload) {
+            if (!item.dni) continue;
+            if (!seenDnis.has(item.dni)) {
+                cleanPayload.push(item);
+                seenDnis.add(item.dni);
+            }
+        }
+
+        // 1. Upsert en Supabase
         const { error } = await window.supabaseClient
             .from('asistencias')
-            .upsert(payload, { onConflict: 'dni, evento_id' });
+            .upsert(cleanPayload, { onConflict: 'dni, evento_id' });
 
         if (error) throw error;
 

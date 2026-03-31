@@ -540,11 +540,17 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 2000;
+    z-index: 3000; /* removed !important to allow inline or class-based overrides */
     opacity: 0;
     visibility: hidden;
     transition: var(--transition);
 }
+
+/* Modales en cascada / Capas */
+#status-modal { z-index: 3100; }
+#reminder-draft-modal, #certificate-draft-modal { z-index: 3200; }
+#participant-review-modal { z-index: 3300; }
+#calendar-report-modal { z-index: 3400; }
 
 /* Forzar SweetAlert encima de todo */
 .swal2-container {
